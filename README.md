@@ -1,3 +1,7 @@
+Taking the SHOGO VR mod from PCVR to standalones via WinlatorXR XrAPI
+
+# Original SHOGO VR ReadMe Below
+
 <p align="center"><img src="launcher/assets/header.png" alt="In Memory of Monolith Productions - Shogo: Mobile Armor Division" width="640"></p>
 
 # Shogo VR
