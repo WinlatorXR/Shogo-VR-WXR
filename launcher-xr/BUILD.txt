@@ -1,0 +1,21 @@
+Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
+
+  1. Open an x86 Developer prompt, or in a script use:
+       cmd /c ""<VS>\Common7\Tools\VsDevCmd.bat" -arch=x86 && ..."
+     where <VS> is your Visual Studio 2022+ Build Tools installation.
+
+  2. Compile the resources and the source:
+       rc.exe /nologo /fo ShogoVR.res ShogoVR.rc
+       cl.exe /nologo /O2 /MT /EHsc /W3 /DUNICODE /D_UNICODE /c ShogoVR.cpp
+       link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:ShogoVR.exe ShogoVR.obj ShogoVR.res
+
+  ShogoVR.exe is a windowless EXE (not a .bat, not a shortcut).  It finds
+  Client.exe next to itself, or one/two folders up (so it also works from the
+  overlaid ShogoVR folder next to Client.exe), launches the game with the same
+  -rez list the GUI launcher builds (base game, Custom, map packs, single
+  player, then ShogoVR last so its CShell.dll wins), waits for it to exit and
+  returns its exit code.
+
+  Deploy: copy ShogoVR.exe alongside Client.exe in the WinlatorXR container
+  and start it from there.  Its icon comes from assets/shogo.ico (the icon of
+  Shogo.exe).
