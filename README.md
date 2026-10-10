@@ -1,6 +1,6 @@
 Taking the SHOGO VR mod from PCVR to standalones via WinlatorXR XrAPI
 
-Full credit to BrandonW24 for the original PCVR mod of SHOGO MAD
+Full credit to BrandonW24 for the original PCVR mod of SHOGO MAD - https://github.com/BrandonW24/Shogo-VR
 
 Edited with the help of Big Pickle (OpenCode Zen) AI to bypass the 64-bit bridge application and the use of dgVoodoo2
 
