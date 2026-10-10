@@ -1,0 +1,185 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{8F2A1B3C-4D5E-4F60-9A7B-C1D2E3F40516}</ProjectGuid>
+    <RootNamespace>CShell</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(MSBuildProjectDirectory)\out\</OutDir>
+    <IntDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\</IntDir>
+    <TargetName>CShell</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\ShogoSource\AppHeaders;..\ShogoSource\Shared;..\ShogoSource\ClientShellDLL;..\game;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_MBCS;RIOT_BUILD;_DEBUG;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/Zc:forScope- %(AdditionalOptions)</AdditionalOptions>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <AdditionalIncludeDirectories>..\ShogoSource\AppHeaders;..\ShogoSource\Shared;..\ShogoSource\ClientShellDLL;..\game;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_MBCS;RIOT_BUILD;NDEBUG;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/Zc:forScope- %(AdditionalOptions)</AdditionalOptions>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\..\Shared\DebrisTypes.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\..\Shared\ModelFuncs.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\..\Shared\RiotCommonUtilities.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\..\Shared\WeaponDefs.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\AnimeLineFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\BaseLineSystemFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\BaseMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\BaseParticleSystemFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\BaseScaleFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\BitmapFont.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\BulletTrailFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\CastLineFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\client_physics.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ClientInfoMgr.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ClientUtilities.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ClientWeaponUtils.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\CMoveMgr.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\Credits.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\CreditsWin.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\CriticalHitFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\DeathFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\DebrisFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\DetailSettingsMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\DisplayModeMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\DisplayOptionsMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\DynamicLightFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ExplosionFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\GibFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\InfoDisplay.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\IpMgr.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\JoystickMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\JuggernautFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\KeyboardMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\KeyFixes.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\LaserCannonFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\LightFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\LightScaleMgr.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\LineBallFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\LoadLevelMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\LoadSavedLevelMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\MainMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\MarkSFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\MessageBox.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\MessageMgr.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\MissionObjectives.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\MouseMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\Music.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\NetInfo.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\NetStart.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\NewGameMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\OptionsMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ParticleExplosionFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ParticleSystemFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ParticleTrailFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ParticleTrailSegmentFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PickupItemFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\plasma1.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PlayerCamera.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PlayerFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PlayerInventory.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PlayerStats.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PolyGridFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\PopupMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ProjectileFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\RiotClientShell.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\RiotMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\RiotSettings.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\RocketFlareFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SaveLevelMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SFXMgr.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SFXReg.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\ShellCasingFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SinglePlayerMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\Slider.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SmokeFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SmokeSphereFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SoundOptionsMenu.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\Sparam.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SparksFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\SpriteFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\TextHelper.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\TracerFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\VKDefs.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\WeaponFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\WeaponFXLow.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\WeaponFXMed.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\WeaponModel.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\WeaponSoundFX.cpp" />
+    <ClCompile Include="..\ShogoSource\ClientShellDLL\WinUtil.cpp" />
+    <ClCompile Include="..\game\VRStereo.cpp" />
+    <ClCompile Include="..\game\VRCapture.cpp" />
+    <ClCompile Include="..\game\VRMenu.cpp" />
+    <ClCompile Include="..\game\XrApiUDP.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

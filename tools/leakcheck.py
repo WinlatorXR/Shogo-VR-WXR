@@ -35,7 +35,7 @@ def main():
                     if len(n) >= 30: monolith.add(n)
     singles, runs = [], []
     for root, dirs, files in os.walk(repo):
-        dirs[:] = [d for d in dirs if d not in ('.git', 'openxr')]
+        dirs[:] = [d for d in dirs if d not in ('.git', 'openxr', 'ShogoSource', 'shogosrc')]
         for name in files:
             if not name.lower().endswith(EXTS) or name == 'leakcheck.py': continue
             path = os.path.join(root, name)

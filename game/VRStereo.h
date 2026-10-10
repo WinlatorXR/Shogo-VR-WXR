@@ -32,6 +32,7 @@
 #include "client_de.h"
 #include "VarTrack.h"
 #include "ShogoVRShared.h"
+#include "XrApiUDP.h"
 
 // Values for the VRStereo console variable
 #define VR_STEREO_OFF			0
@@ -89,12 +90,17 @@ class CVRStereo
 		void	Calibrate(HLOCALOBJ hCamera, HLOCALOBJ* pFilterList, DBOOL bFootScale);
 		void	PrintInfo();
 
-		// Headset link (ShogoVRBridge.exe).  Call UpdateBridge() once per frame.
+		// Headset link (WinlatorXR XrApi, in-process UDP).  Call UpdateBridge() once per frame.
 		void	UpdateBridge();
 		DBOOL	IsBridgeConnected()		{ return m_bBridgeAlive; }
 		DBOOL	IsHeadTracking();
 		void	ApplyHeadTracking(DFLOAT &fYaw, DFLOAT &fPitch);	// head/hand aim, stick turning
 		void	RequestRecenter();
+
+		// Render HMD_SYNC as a shade of red in the top-left corner (WinlatorXR
+		// uses this to keep the captured frame in sync).  Call once per frame,
+		// after all drawing, before the frame is presented.
+		void	DrawXrSyncPixel();
 
 		// Motion controllers (through the bridge)
 		DBOOL	IsControllerActive();
@@ -113,6 +119,8 @@ class CVRStereo
 		// weapon model has been updated for the frame.
 		void	UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos);
 		void	CheckRenderer(DBOOL bStable);	// resets the renderer if it's drawing at the wrong size
+		void	FitGameWindow();			// resize the game window so its client area is the render size
+		void	FitVRWindow();				// drop the title bar and fill the display, like HWXR
 
 		// ShogoVR\ShogoVR.ini (written by the Shogo VR Settings window):
 		// read at start and again whenever it changes.
@@ -267,6 +275,7 @@ class CVRStereo
 		DFLOAT		m_fBaseTanY;
 
 		// Headset link state
+		CXrApiUDP*		m_pXrApi;			// WinlatorXR XrApi UDP client (in-process)
 		void*			m_hMapping;
 		ShogoVRShared*	m_pShared;
 		DBOOL		m_bBridgeAlive;
@@ -298,6 +307,10 @@ class CVRStereo
 		DFLOAT		m_fRendererBadSince;
 		DFLOAT		m_fLastRendererReset;
 		int			m_nRendererResets;
+		DFLOAT		m_fWindowBadSince;
+		DFLOAT		m_fLastWindowFix;
+		int			m_nWindowFixes;
+		long		m_nLoggedWindowW, m_nLoggedWindowH;
 		DFLOAT		m_fGunScaleUsed;
 		char		m_szIniPath[300];
 		DDWORD		m_nIniTimeLo, m_nIniTimeHi;
@@ -311,6 +324,7 @@ class CVRStereo
 		DDWORD		m_nReleased;		// went up this frame
 		DFLOAT		m_fMoveX, m_fMoveY;
 		DFLOAT		m_fTurnX, m_fTurnY;
+		DFLOAT		m_fHapticL, m_fHapticR;	// remaining vibration frames sent to the runtime
 		DVector		m_vRightF, m_vRightU, m_vRightP;
 		DVector		m_vLeftF, m_vLeftU, m_vLeftP;
 		DBOOL		m_bGameplayInput;	// controller buttons act as game commands (not menu keys)
@@ -413,6 +427,7 @@ class CVRStereo
 		VarTrack	m_vtGunScale;		// VRGunScale       size of the gun/arms in your hand, on foot
 		VarTrack	m_vtGunScaleMCA;	// VRGunScaleMCA    same, in an MCA
 		VarTrack	m_vtFixRenderer;	// VRFixRenderer    1 = reset the renderer if it draws at the wrong size
+		VarTrack	m_vtVRFullscreen;	// VRFullscreen     1 = drop the title bar and fill the display
 		VarTrack	m_vtMoveDir;		// VRMoveDir        walk towards: 0 gun hand, 1 head, 2 other hand
 		VarTrack	m_vtTwoHand;		// VRTwoHand        1 = support the gun with your other hand to aim it
 		VarTrack	m_vtBody;			// VRBody           1 = show your body
@@ -430,6 +445,8 @@ class CVRStereo
 		VarTrack	m_vtDirectCapture;	// VRDirectCapture  1 = hand frames straight from the renderer to the bridge
 		VarTrack	m_vtEasyLadders;	// VREasyLadders    1 = on a ladder the stick climbs up/down
 		VarTrack	m_vtAutoBridge;		// VRAutoBridge     1 = start the headset bridge with the game
+		VarTrack	m_vtHaptics;		// VRHaptics        1 = pulse the controllers on fire/weapon edges
+		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = wait for a new HMD_SYNC each frame (bounded)
 };
 
 extern CVRStereo g_VRStereo;

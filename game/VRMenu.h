@@ -16,6 +16,10 @@
 
 #define VRMENU_ITEMS	26
 
+#if VRMENU_ITEMS > MAX_GENERIC_ITEMS
+#error VRMenu has more items than CBaseMenu::m_GenericItem can hold
+#endif
+
 class CVRMenu : public CBaseMenu
 {
 public:

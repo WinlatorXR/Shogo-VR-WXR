@@ -2,6 +2,16 @@ Taking the SHOGO VR mod from PCVR to standalones via WinlatorXR XrAPI
 
 Full credit to BrandonW24 for the original PCVR mod of SHOGO MAD
 
+Edited with the help of Big Pickle (OpenCode Zen) AI to bypass the 64-bit bridge application and the use of dgVoodoo2
+
+Thanks to Luboš,GmoLargey, and others for their work on [WinlatorXR](https://github.com/WinlatorXR/WinlatorXR) and everyone else who had contributed to portable PC gaming via Winlator on other platforms
+
+> ** NOTE: This is a 'breaking changes' fork of the parent project, and future updates to it will be required in order to stay up to date with its PCVR equivalent **
+
+Includes a `ShogoSourceModifications` folder with prose instructions describing this fork's modifications to the SHOGO v2.2 source code (available online elsewhere) and the rough placements of each one, so others can more easily recreate and continue development of this fork. It deliberately contains none of Monolith's source, only the file, function and line-number where each edit belongs
+
+Code added or modified from the parent project in this fork/port over to WinlatorXR's XrApi is subject to the repository's [MIT license](https://opensource.org/license/mit), so that others may adapt it for their own C++ PC VR games and mods as well!
+
 # Original SHOGO VR ReadMe Below
 
 <p align="center"><img src="launcher/assets/header.png" alt="In Memory of Monolith Productions - Shogo: Mobile Armor Division" width="640"></p>
@@ -198,7 +208,7 @@ It'll really help me solve any issues you may encounter!
 | `tools/leakcheck.py` | Checks that nothing from Monolith's source has slipped into this repository. |
 | `tools/makepayload.py` | Packs the files the installer carries into `payload.bin`, which the installer builder embeds (see `launcher/BUILD.txt`). |
 
-**Not included:** Monolith's Shogo source code. The VR game code (`CShell.dll`) is built from Monolith's Shogo v2.2 source release. Its licence lets mods be shared free of charge but forbids redistributing the source, so `CShell.dll` ships only in compiled form, inside the installer. For the same reason, the edits that connect `game/` into Monolith's own files aren't published here.
+**Not included:** Monolith's Shogo source code. The VR game code (`CShell.dll`) is built from Monolith's Shogo v2.2 source release. Its licence lets mods be shared free of charge but forbids redistributing the source, so `CShell.dll` ships only in compiled form, inside the installer. For the same reason, only prose instructions describing the edits that connect `game/` into Monolith's own files are published, in `ShogoSourceModifications/`; they reproduce none of Monolith's source.
 
 Building: `bridge/` and `launcher/` build with Visual Studio or MinGW-w64; see `launcher/BUILD.txt`. The installer is made by `ShogoVR-InstallerBuilder.exe` from a compiled `CShell.dll` plus an `AUTHORS.txt`.
 

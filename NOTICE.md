@@ -6,7 +6,7 @@ THIS MOD IS NOT MADE BY OR SUPPORTED BY Monolith Productions, or any of its affi
 ## Not included
 
 - **Shogo: Mobile Armor Division:** its game files, assets and executables. You need your own copy.
-- **Monolith's Shogo v2.2 source release.** Its licence forbids redistributing it, so this repository contains no part of it, and `tools/leakcheck.py` checks that. The compiled `CShell.dll` built from it is distributed free, as that licence allows. Under the same licence, Monolith Productions has an irrevocable, royalty-free right to use and distribute this mod.
+- **Monolith's Shogo v2.2 source release.** Its licence forbids redistributing it, so this repository contains no part of it, and `tools/leakcheck.py` checks that. (`ShogoSourceModifications/` holds pristine prose instructions for integrating the mod into your own copy; they reproduce no source lines, only file/function references and line-number hints.) The compiled `CShell.dll` built from it is distributed free, as that licence allows. Under the same licence, Monolith Productions has an irrevocable, royalty-free right to use and distribute this mod.
 - **dgVoodoo 2.** If you use it, it's your own copy.
 
 ## Artwork

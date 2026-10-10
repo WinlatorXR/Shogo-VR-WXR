@@ -92,6 +92,7 @@ CVRStereo::CVRStereo()
 	m_fBaseTanX			= 1.0f;
 	m_fBaseTanY			= 1.0f;
 
+	m_pXrApi				= DNULL;
 	m_hMapping				= DNULL;
 	m_pShared				= DNULL;
 	m_bBridgeAlive			= DFALSE;
@@ -123,6 +124,10 @@ CVRStereo::CVRStereo()
 	m_fRendererBadSince		= -1.0f;
 	m_fLastRendererReset	= -1000.0f;
 	m_nRendererResets		= 0;
+	m_fWindowBadSince		= -1.0f;
+	m_fLastWindowFix		= -1000.0f;
+	m_nWindowFixes			= 0;
+	m_nLoggedWindowW = m_nLoggedWindowH = 0;
 	m_fGunScaleUsed			= 1.0f;
 	m_szIniPath[0]			= 0;
 	m_nIniTimeLo = m_nIniTimeHi = 0;
@@ -136,6 +141,7 @@ CVRStereo::CVRStereo()
 	m_nReleased				= 0;
 	m_fMoveX = m_fMoveY		= 0.0f;
 	m_fTurnX = m_fTurnY		= 0.0f;
+	m_fHapticL = m_fHapticR	= 0.0f;
 	VEC_SET(m_vRightF, 0.0f, 0.0f, 1.0f);	VEC_SET(m_vRightU, 0.0f, 1.0f, 0.0f);	VEC_INIT(m_vRightP);
 	VEC_SET(m_vLeftF, 0.0f, 0.0f, 1.0f);	VEC_SET(m_vLeftU, 0.0f, 1.0f, 0.0f);	VEC_INIT(m_vLeftP);
 	m_bGameplayInput		= DFALSE;
@@ -265,6 +271,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtGunScale.Init		(pClientDE, "VRGunScale",		NULL, 1.5f);
 	m_vtGunScaleMCA.Init	(pClientDE, "VRGunScaleMCA",	NULL, 1.0f);
 	m_vtFixRenderer.Init	(pClientDE, "VRFixRenderer",	NULL, 1.0f);
+	m_vtVRFullscreen.Init	(pClientDE, "VRFullscreen",		NULL, 1.0f);
 	m_vtMoveDir.Init		(pClientDE, "VRMoveDir",		NULL, 0.0f);
 	m_vtTwoHand.Init		(pClientDE, "VRTwoHand",		NULL, 1.0f);
 	m_vtBody.Init			(pClientDE, "VRBody",			NULL, 1.0f);
@@ -274,6 +281,8 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtGunArms.Init		(pClientDE, "VRGunArms",		NULL, 1.0f);
 	m_vtEasyLadders.Init	(pClientDE, "VREasyLadders",	NULL, 1.0f);
 	m_vtAutoBridge.Init		(pClientDE, "VRAutoBridge",		NULL, 1.0f);
+	m_vtHaptics.Init		(pClientDE, "VRHaptics",		NULL, 1.0f);
+	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 0.0f);
 	m_vtDirectCapture.Init	(pClientDE, "VRDirectCapture",	NULL, 1.0f);
 	m_vtHeldPitch.Init		(pClientDE, "VRHeldPitch",		NULL, 0.0f);
 	m_vtHeldYaw.Init		(pClientDE, "VRHeldYaw",		NULL, 0.0f);
@@ -290,8 +299,6 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	pClientDE->GetEngineHook("HWND", &pHwnd);
 	m_nGameHwnd = (DDWORD)pHwnd;
 
-	OpenShared();
-
 	// Controller buttons become game commands (fire, jump, crouch) by
 	// answering "yes" when the game asks the engine whether they're on.
 	m_pfnIsCommandOn = pClientDE->IsCommandOn;
@@ -300,8 +307,19 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	LoadSettingsFile(DTRUE);
 	Log("Shogo VR started (CShell.dll built " __DATE__ " " __TIME__ ")");
 	VRInstallCrashReporter();
-	RememberCommandLine();
-	StartBridgeIfNeeded();
+
+	// WinlatorXR XrApi: in-process UDP client (replaces the old OpenXR bridge).
+	if (m_vtAutoBridge.GetFloat(1.0f) != 0.0f)
+	{
+		m_pXrApi = new CXrApiUDP();
+		m_pXrApi->SetSyncHold(m_vtSyncHold.GetFloat(0.0f) != 0.0f);
+		m_pXrApi->Start();
+		if (m_pXrApi->IsRunning())
+			Log("XrApi: listening on udp 7872/7873 (headset %s %s)",
+				m_pXrApi->GetHmdMake(), m_pXrApi->GetHmdModel());
+		else
+			Log("XrApi: could not open the UDP sockets");
+	}
 
 	// The creators (ShogoVR\AUTHORS.txt, one per line) for the opening notice.
 	if (m_szIniPath[0])
@@ -347,12 +365,12 @@ void CVRStereo::Term()
 	VRRemoveCrashReporter();				// before this DLL goes away
 	ReleaseTransformKey();
 
-	// Close the headset bridge if the game started it.
-	if (m_bStartedBridge)
+	// Shut the XrApi link down (closes the sockets, removes the vr file).
+	if (m_pXrApi)
 	{
-		HANDLE hQuit = OpenEventA(EVENT_MODIFY_STATE, FALSE, "Local\\ShogoVRBridge_Quit");
-		if (hQuit) { SetEvent(hQuit); CloseHandle(hQuit); }
-		m_bStartedBridge = DFALSE;
+		m_pXrApi->Stop();
+		delete m_pXrApi;
+		m_pXrApi = DNULL;
 	}
 	VRCapture_Uninstall();		// before this DLL goes away
 	m_bCaptureHook = DFALSE;
@@ -1497,16 +1515,6 @@ void CVRStereo::UpdateBridge()
 	if (!m_pClientDE) return;
 	CheckSettingsFile();
 
-	// Every few seconds: no bridge running (it stepped aside, crashed or was
-	// closed)?  Start one - from the game, so it has the game's own rights.
-	if ((long)(GetTickCount() - m_nNextBridgeCheck) >= 0)
-	{
-		m_nNextBridgeCheck = GetTickCount() + 5000;
-		if (!m_bBridgeAlive) StartBridgeIfNeeded();
-	}
-
-	if (!m_pShared) return;
-
 	if (!m_nGameHwnd)
 	{
 		void* pHwnd = DNULL;
@@ -1514,96 +1522,49 @@ void CVRStereo::UpdateBridge()
 		m_nGameHwnd = (DDWORD)pHwnd;
 	}
 
-	VRCapture_SetGame((void*)m_nGameHwnd, m_pShared, m_vtDirectCapture.GetFloat(1.0f) != 0.0f);
-
-	ShogoVRShared* s = m_pShared;
-	if (s->magic != SHOGOVR_MAGIC || s->version != SHOGOVR_VERSION || s->structSize != sizeof(ShogoVRShared))
-	{
-		m_bBridgeAlive = DFALSE;
-		return;
-	}
-
-	// Read the bridge's block.  The sequence number is odd while the bridge
-	// is writing, and changes if it wrote while we were reading - retry then.
-
-	long nBeat = 0, nFlags = 0, nPoseId = 0, nCtrl = 0, nButtons = 0;
-	float f[3], u[3], p[3], fYaw = 0.0f, fPitch = 0.0f, fTanX = 0.0f, fTanY = 0.0f;
-	float rf[3], ru[3], rp[3], lf[3], lu[3], lp[3], mx = 0.0f, my = 0.0f, tx = 0.0f, ty = 0.0f;
+	// Poll the WinlatorXR XrApi.  Fresh packets mean the headset is live.
+	XrApiPose pose;
 	DBOOL bGot = DFALSE;
-	int nTry, i;
-
-	for (nTry = 0; nTry < 1000 && !bGot; nTry++)
-	{
-		long nSeq1 = InterlockedExchangeAdd((long*)&s->bridgeSeq, 0);
-		if (nSeq1 & 1) continue;
-
-		nBeat	= s->bridgeHeartbeat;
-		nFlags	= s->bridgeFlags;
-		nPoseId	= s->poseId;
-		for (i = 0; i < 3; i++)
-		{
-			f[i] = s->headForward[i];
-			u[i] = s->headUp[i];
-			p[i] = s->headPos[i];
-			rf[i] = s->rightForward[i];	ru[i] = s->rightUp[i];	rp[i] = s->rightPos[i];
-			lf[i] = s->leftForward[i];	lu[i] = s->leftUp[i];	lp[i] = s->leftPos[i];
-		}
-		nCtrl		= s->controllerFlags;
-		nButtons	= s->buttons;
-		mx = s->moveX;	my = s->moveY;
-		tx = s->turnX;	ty = s->turnY;
-		fYaw	= s->headYaw;
-		fPitch	= s->headPitch;
-		fTanX	= s->needTanX;
-		fTanY	= s->needTanY;
-
-		long nSeq2 = InterlockedExchangeAdd((long*)&s->bridgeSeq, 0);
-		if (nSeq1 == nSeq2) bGot = DTRUE;
-	}
-
-	// Alive = the heartbeat moved within the last second.
+	if (m_pXrApi && m_pXrApi->IsRunning())
+		bGot = m_pXrApi->Poll(pose);
+	if (!bGot) pose.bValid = DFALSE;
 
 	DFLOAT fNow = m_pClientDE->GetTime();
-	if (bGot && nBeat != m_nLastBridgeBeat)
+	if (bGot && pose.bValid)
 	{
-		m_nLastBridgeBeat = nBeat;
+		m_nLastBridgeBeat++;
 		m_fLastBridgeBeatTime = fNow;
 	}
 	m_bBridgeAlive = (m_nLastBridgeBeat != 0) && ((fNow - m_fLastBridgeBeatTime) < 1.0f);
 	if (m_bBridgeAlive != m_bLoggedBridge)
 	{
-		Log(m_bBridgeAlive ? "Headset bridge connected" : "Headset bridge gone");
+		Log(m_bBridgeAlive ? "Headset connected (XrApi)" : "Headset gone (XrApi)");
 		m_bLoggedBridge = m_bBridgeAlive;
 	}
-	if (m_nRenderW != m_nLoggedRenderW || m_nRenderH != m_nLoggedRenderH || m_nSurfW != m_nLoggedSurfW ||
-		m_nSurfH != m_nLoggedSurfH || m_nClientW != m_nLoggedClientW || m_nClientH != m_nLoggedClientH)
-	{
-		Log("Resolution %ldx%ld, drawing at %ldx%ld, window %ldx%ld", m_nRenderW, m_nRenderH, m_nSurfW, m_nSurfH, m_nClientW, m_nClientH);
-		m_nLoggedRenderW = m_nRenderW; m_nLoggedRenderH = m_nRenderH;
-		m_nLoggedSurfW = m_nSurfW; m_nLoggedSurfH = m_nSurfH;
-		m_nLoggedClientW = m_nClientW; m_nLoggedClientH = m_nClientH;
-	}
-	if (m_nLoggedCapture < 1 && VRCapture_Seen() > 0) { Log("Direct capture: renderer frames are coming through"); m_nLoggedCapture = 1; }
-	if (m_nLoggedCapture < 2 && VRCapture_Frames() > 0) { Log("Direct capture: frames handed to the bridge"); m_nLoggedCapture = 2; }
 
-	if (bGot && m_bBridgeAlive)
+	if (bGot && pose.bValid && m_bBridgeAlive)
 	{
-		m_nBridgeFlags	= nFlags;
-		m_nPoseId		= nPoseId;
-		VEC_SET(m_vHeadF, f[0], f[1], f[2]);
-		VEC_SET(m_vHeadU, u[0], u[1], u[2]);
-		VEC_SET(m_vHeadP, p[0], p[1], p[2]);
-		m_fHeadYaw		= fYaw;
-		m_fHeadPitch	= fPitch;
-		m_fNeedTanX		= fTanX;
-		m_fNeedTanY		= fTanY;
+		// XrApi has no layer support - it captures the one game window - so the
+		// HUD strip and floating panels are off, and the HUD and menus are drawn
+		// into each eye instead (see BeginFrame / ComputeLayout / Begin2D).
+		m_nBridgeFlags	= SHOGOVR_BRIDGE_HEADSET_ACTIVE;
+		m_nPoseId++;
+		VEC_SET(m_vHeadF, pose.headF[0], pose.headF[1], pose.headF[2]);
+		VEC_SET(m_vHeadU, pose.headU[0], pose.headU[1], pose.headU[2]);
+		VEC_SET(m_vHeadP, pose.headP[0], pose.headP[1], pose.headP[2]);
+		m_fHeadYaw		= pose.headYaw;
+		m_fHeadPitch	= pose.headPitch;
+		m_fNeedTanX		= pose.tanX;
+		m_fNeedTanY		= pose.tanY;
 
-		m_nCtrlFlags	= nCtrl;
-		m_nButtons		= (DDWORD)nButtons;
-		m_fMoveX = mx;	m_fMoveY = my;
-		m_fTurnX = tx;	m_fTurnY = ty;
-		VEC_SET(m_vRightF, rf[0], rf[1], rf[2]);	VEC_SET(m_vRightU, ru[0], ru[1], ru[2]);	VEC_SET(m_vRightP, rp[0], rp[1], rp[2]);
-		VEC_SET(m_vLeftF, lf[0], lf[1], lf[2]);		VEC_SET(m_vLeftU, lu[0], lu[1], lu[2]);		VEC_SET(m_vLeftP, lp[0], lp[1], lp[2]);
+		m_nCtrlFlags	= (pose.bCtrlActive ? SHOGOVR_CTRL_ACTIVE : 0)
+						| (pose.bRightPose ? SHOGOVR_CTRL_RIGHT_POSE : 0)
+						| (pose.bLeftPose  ? SHOGOVR_CTRL_LEFT_POSE  : 0);
+		m_nButtons		= pose.buttons;
+		m_fMoveX = pose.moveX;	m_fMoveY = pose.moveY;
+		m_fTurnX = pose.turnX;	m_fTurnY = pose.turnY;
+		VEC_SET(m_vRightF, pose.rF[0], pose.rF[1], pose.rF[2]);	VEC_SET(m_vRightU, pose.rU[0], pose.rU[1], pose.rU[2]);	VEC_SET(m_vRightP, pose.rP[0], pose.rP[1], pose.rP[2]);
+		VEC_SET(m_vLeftF, pose.lF[0], pose.lF[1], pose.lF[2]);	VEC_SET(m_vLeftU, pose.lU[0], pose.lU[1], pose.lU[2]);	VEC_SET(m_vLeftP, pose.lP[0], pose.lP[1], pose.lP[2]);
 	}
 	else if (!m_bBridgeAlive)
 	{
@@ -1626,7 +1587,7 @@ void CVRStereo::UpdateBridge()
 	if (!IsHeadTracking()) m_bHaveBody = DFALSE;
 	if (!IsActive()) m_nReportViewMode = SHOGOVR_VIEW_OFF;
 
-	// Resolution and window size, so the bridge can fix a wrongly sized window.
+	// Resolution and window size, for logging and the renderer fixer.
 	RMode mode;
 	memset(&mode, 0, sizeof(mode));
 	if (m_pClientDE->GetRenderMode(&mode) == LT_OK)
@@ -1646,7 +1607,42 @@ void CVRStereo::UpdateBridge()
 		m_nClientH = rcClient.bottom - rcClient.top;
 	}
 
-	WriteGameBlock();
+	if (m_nRenderW != m_nLoggedRenderW || m_nRenderH != m_nLoggedRenderH || m_nSurfW != m_nLoggedSurfW ||
+		m_nSurfH != m_nLoggedSurfH || m_nClientW != m_nLoggedClientW || m_nClientH != m_nLoggedClientH)
+	{
+		Log("Resolution %ldx%ld, drawing at %ldx%ld, window %ldx%ld", m_nRenderW, m_nRenderH, m_nSurfW, m_nSurfH, m_nClientW, m_nClientH);
+		m_nLoggedRenderW = m_nRenderW; m_nLoggedRenderH = m_nRenderH;
+		m_nLoggedSurfW = m_nSurfW; m_nLoggedSurfH = m_nSurfH;
+		m_nLoggedClientW = m_nClientW; m_nLoggedClientH = m_nClientH;
+	}
+
+	// Controller haptics: a short vibration pulse on the fire edge (and a tiny
+	// one when switching weapons).  The runtime expects a duration in frames,
+	// so we send a small countdown and let it fall back to zero.
+	if (m_fHapticL > 0.0f) m_fHapticL -= 1.0f;
+	if (m_fHapticR > 0.0f) m_fHapticR -= 1.0f;
+	if (m_vtHaptics.GetFloat(1.0f) != 0.0f)
+	{
+		if (m_nPressed & SHOGOVR_BTN_FIRE)			m_fHapticR = 4.0f;
+		if (m_nPressed & SHOGOVR_BTN_NEXT_WEAPON)	m_fHapticR = 2.0f;
+	}
+	if (m_fHapticL < 0.0f) m_fHapticL = 0.0f;
+	if (m_fHapticR < 0.0f) m_fHapticR = 0.0f;
+
+	// Tell the runtime what we're doing: haptics, VR on, SBS when stereo is
+	// active, and the per-eye FOV we render at (0 = runtime default).
+	if (m_pXrApi && m_pXrApi->IsRunning())
+	{
+		int nMode3D = (GetMode() != VR_STEREO_OFF) ? 1 : 0;
+		DFLOAT fFovX = (m_fEyeFovX > 0.01f) ? VR_RAD2DEG(m_fEyeFovX) : 0.0f;
+		DFLOAT fFovY = (m_fEyeFovY > 0.01f) ? VR_RAD2DEG(m_fEyeFovY) : 0.0f;
+		m_pXrApi->SendFrame(m_fHapticL, m_fHapticR, 1, nMode3D, fFovX, fFovY);
+	}
+
+	if (m_vtVRFullscreen.GetFloat(1.0f) != 0.0f)
+		FitVRWindow();				// no title bar, fills the display (like HWXR)
+	else
+		FitGameWindow();
 }
 
 DBOOL CVRStereo::IsHeadTracking()
@@ -1703,11 +1699,52 @@ void CVRStereo::ApplyHeadTracking(DFLOAT &fYaw, DFLOAT &fPitch)
 
 void CVRStereo::RequestRecenter()
 {
-	if (!m_pShared || !m_pClientDE) return;
+	if (!m_pClientDE) return;
 
-	InterlockedIncrement((long*)&m_pShared->recenterRequest);
-	if (m_bBridgeAlive)	m_pClientDE->CPrint("VR: recentred.");
-	else				m_pClientDE->CPrint("VR: the headset bridge isn't running.");
+	if (m_pXrApi && m_pXrApi->IsRunning())
+	{
+		m_pXrApi->RequestRecenter();
+		m_pClientDE->CPrint("VR: recentred.");
+	}
+	else
+	{
+		m_pClientDE->CPrint("VR: the headset link isn't running.");
+	}
+}
+
+// WinlatorXR reads a shade of red from the top-left corner of the captured
+// frame to keep itself in sync.  Red = HMD_SYNC (0..255).  A 10x10 square, as
+// HWXR uses, so a small capture offset never lands on the border; in SBS the
+// right eye half gets the same square so whichever half the runtime samples
+// carries the frame ID.
+void CVRStereo::DrawXrSyncPixel()
+{
+	if (!m_pClientDE || !m_pXrApi || !m_bBridgeAlive) return;
+
+	int r = (int)(m_pXrApi->LastSync() + 0.5f);
+	if (r < 0) r = 0;
+	if (r > 255) r = 255;
+
+	HSURFACE hScreen = m_pClientDE->GetScreenSurface();
+	if (!hScreen) return;
+
+	DRect rc;
+	rc.left = 0; rc.top = 0;
+	rc.right = 10; rc.bottom = 10;
+	DDWORD col = m_pClientDE->SetupColor1((DFLOAT)r / 255.0f, 0.0f, 0.0f, DFALSE);
+	m_pClientDE->FillRect(hScreen, &rc, col);
+
+	if (IsActive())
+	{
+		DDWORD w = 0, h = 0;
+		m_pClientDE->GetSurfaceDims(hScreen, &w, &h);
+		if (w >= 24)
+		{
+			rc.left = (long)(w / 2); rc.top = 0;
+			rc.right = rc.left + 10; rc.bottom = 10;
+			m_pClientDE->FillRect(hScreen, &rc, col);
+		}
+	}
 }
 
 void CVRStereo::WriteGameBlock()
@@ -2098,6 +2135,121 @@ void CVRStereo::CheckRenderer(DBOOL bStable)
 	m_nRendererResets++;
 	m_fLastRendererReset = fNow;
 	m_fRendererBadSince = -1.0f;
+}
+
+// WinlatorXR captures the game window, so its inside should be exactly the
+// render resolution - that gives a pixel-for-pixel capture and puts the
+// HMD_SYNC pixel where the runtime looks for it.  If the window is the wrong
+// size (the engine sometimes rebuilds it small after being minimised), nudge it
+// back.  Honours VRFixRenderer.  This is the fallback path used when
+// VRFullscreen is off; with it on, FitVRWindow makes the window borderless and
+// fills the display instead.  The old OpenXR bridge did this with
+// PlanWindow/FixGameWindow; this is the portable core of that behaviour.
+void CVRStereo::FitGameWindow()
+{
+	if (!m_pClientDE || !IsActive() || !m_bBridgeAlive || m_vtFixRenderer.GetFloat(1.0f) == 0.0f) return;
+	if (!m_nGameHwnd || !IsWindow((HWND)m_nGameHwnd)) return;
+	if (m_nRenderW <= 0 || m_nRenderH <= 0) return;
+
+	HWND hwnd = (HWND)m_nGameHwnd;
+	if (IsIconic(hwnd)) { m_fWindowBadSince = -1.0f; return; }
+
+	DFLOAT fNow = m_pClientDE->GetTime();
+
+	if (m_nClientW == m_nRenderW && m_nClientH == m_nRenderH)
+	{
+		if (m_nLoggedWindowW != m_nClientW || m_nLoggedWindowH != m_nClientH)
+		{
+			Log("Game window is the render size (%ldx%ld)", m_nClientW, m_nClientH);
+			m_nLoggedWindowW = m_nClientW; m_nLoggedWindowH = m_nClientH;
+		}
+		m_fWindowBadSince = -1.0f;
+		return;
+	}
+
+	// Let the size settle first (it is briefly wrong during start-up).
+	if (m_fWindowBadSince < 0.0f) { m_fWindowBadSince = fNow; return; }
+	if (fNow - m_fWindowBadSince < 1.5f) return;
+
+	// At most three tries a minute, so we never fight the engine.
+	if (fNow - m_fLastWindowFix > 60.0f) m_nWindowFixes = 0;
+	if (m_nWindowFixes >= 3) return;
+
+	// Outer size that leaves exactly the render resolution inside, clamped so
+	// the window still fits the monitor.
+	LONG style = GetWindowLongW(hwnd, GWL_STYLE);
+	LONG ex    = GetWindowLongW(hwnd, GWL_EXSTYLE);
+	RECT rc    = { 0, 0, m_nRenderW, m_nRenderH };
+	AdjustWindowRectEx(&rc, (DWORD)style, FALSE, (DWORD)ex);
+	LONG outerW = rc.right - rc.left, outerH = rc.bottom - rc.top;
+
+	MONITORINFO mi = { sizeof(mi) };
+	if (GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi))
+	{
+		LONG maxW = mi.rcWork.right - mi.rcWork.left;
+		LONG maxH = mi.rcWork.bottom - mi.rcWork.top;
+		if (outerW > maxW) outerW = maxW;
+		if (outerH > maxH) outerH = maxH;
+	}
+
+	RECT wr;
+	GetWindowRect(hwnd, &wr);
+	Log("Making the game window %ldx%ld (was %ldx%ld) so its inside is %ldx%ld",
+		outerW, outerH, wr.right - wr.left, wr.bottom - wr.top, m_nRenderW, m_nRenderH);
+
+	SetWindowPos(hwnd, NULL, 0, 0, outerW, outerH,
+				 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+
+	m_nWindowFixes++;
+	m_fLastWindowFix = fNow;
+	m_fWindowBadSince = -1.0f;
+}
+
+// WinlatorXR captures the game window, and reads the HMD_SYNC pixel from its
+// top-left corner.  The window therefore has to fill the whole display with no
+// title bar - otherwise the corner the runtime samples is game chrome, and the
+// sync pixel never appears.  This is the same treatment HWXR (Halo CE WXR)
+// gives its window: strip the frame and size it to the screen.  Idempotent, so
+// it is safe to call every frame; also re-applies the style if the engine has
+// rebuilt the window.  Honours VRFullscreen.
+void CVRStereo::FitVRWindow()
+{
+	if (!m_pClientDE || !IsActive() || !m_bBridgeAlive || m_vtVRFullscreen.GetFloat(1.0f) == 0.0f) return;
+	if (!m_nGameHwnd || !IsWindow((HWND)m_nGameHwnd)) return;
+
+	HWND hwnd = (HWND)m_nGameHwnd;
+	if (IsIconic(hwnd)) return;
+
+	const LONG_PTR kNoFrame = WS_THICKFRAME | WS_BORDER | WS_CAPTION;
+	LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+	if (style & kNoFrame)
+	{
+		style &= ~kNoFrame;
+		SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+		Log("VR window: dropped the title bar");
+	}
+
+	int cx = GetSystemMetrics(SM_CXSCREEN);
+	int cy = GetSystemMetrics(SM_CYSCREEN);
+
+	RECT rc;
+	if (GetWindowRect(hwnd, &rc))
+	{
+		if (rc.left || rc.top || rc.right - rc.left != cx || rc.bottom - rc.top != cy)
+		{
+			rc.left = 0; rc.top = 0; rc.right = cx; rc.bottom = cy;
+			SetWindowPos(hwnd, HWND_TOP, rc.left, rc.top, cx, cy,
+						 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+			Log("VR window: filling the display at %dx%d", cx, cy);
+			SetForegroundWindow(hwnd);
+		}
+	}
+	else
+	{
+		SetWindowPos(hwnd, HWND_TOP, 0, 0, cx, cy,
+					 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+		SetForegroundWindow(hwnd);
+	}
 }
 
 void CVRStereo::HideAimHelpers()
