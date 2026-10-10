@@ -4,7 +4,7 @@ Full credit to **BrandonW24** for the original PCVR mod of SHOGO MAD - https://g
 
 Edited with the help of Big Pickle (OpenCode Zen) AI to bypass the 64-bit bridge application and the use of dgVoodoo2
 
-Thanks to Luboš,GmoLargey, and others for their work on [WinlatorXR](https://github.com/WinlatorXR/WinlatorXR) and everyone else who had contributed to portable PC gaming via Winlator on other platforms
+Thanks to Luboš, GmoLargey, and others for their work on [WinlatorXR](https://github.com/WinlatorXR/WinlatorXR) and everyone else who had contributed to portable PC gaming via Winlator on other platforms
 
 > ** NOTE: This is a 'breaking changes' fork of the parent project, and future updates to it will be required in order to stay up to date with its PCVR equivalent **
 
