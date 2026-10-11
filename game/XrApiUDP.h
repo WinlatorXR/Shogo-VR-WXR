@@ -10,9 +10,14 @@
 //
 //   out -> localhost:7278  "<Lhaptic> <Rhaptic> <MODE_VR> <MODE_3D> <FOVH> <FOVV>"
 //   in  <- localhost:7872  (fallback localhost:7873)
-//          "client <29 floats> <19 T/F> [<9 floats> <2 T/F>]"
-//          (0.4 stops after the 19-char string; 0.5's trailing float array
-//           and 2-char Immersive/SBS string are ignored.)
+//          "client <28 floats> <frame id> <21 T/F> <HMD string>"
+//          e.g. "client <LQx4> <Lstick2> <Lpos3> <RQx4> <Rstick2> <Rpos3>
+//                <HQx4> <Hpos3> <IPD fovX fovY> <frame id> <21 chars> META"
+//          The frame id doubles as HMD_SYNC (the red sync pixel).  Trailing
+//          tokens after the bool string (the HMD string) are ignored, and a
+//          shorter/older (19-char) bool string is tolerated.  Bool chars 19/20
+//          are the runtime's IS_IMMERSIVE / IS_SBS hints, which this client
+//          does not need.
 //
 //           Poses arrive in the XrApi/OpenXR frame (right-handed, +Y up,
 //           -Z forward, metres) and are converted here into LithTech space
@@ -62,8 +67,10 @@ class CXrApiUDP
 		void	Stop();				// close sockets, remove the vr file
 		DBOOL	IsRunning()			{ return m_bRunning; }
 
-		// Wait for a fresh HMD_SYNC before returning from Poll (bounded, off by
-		// default).  Lets the app stay in step with the headset.
+		// Wait (blocking, no CPU) for a fresh HMD_SYNC before returning from
+		// Poll.  Unbounded by design: a stalled runtime holds the game on its
+		// last frame until data returns.  Off by default at the API level; the
+		// mod turns it on via VRSyncHold.
 		void	SetSyncHold(DBOOL b)	{ m_bSyncHold = b; }
 
 		// Drain any incoming packets and fill out the newest converted pose.
@@ -113,7 +120,7 @@ class CXrApiUDP
 
 		DFLOAT	m_fLastSync;
 
-		// VRSyncHold: wait for a new HMD_SYNC value each frame (bounded).
+		// VRSyncHold: block for a new HMD_SYNC value each frame (unbounded).
 		DBOOL	m_bSyncHold;
 		DBOOL	m_bHavePrevSync;
 		DFLOAT	m_fPrevFrameSync;

@@ -22,30 +22,29 @@
 #define XR_UDP_FALLBACK_PORT	7873
 #define XR_UDP_SEND_PORT		7278
 
-// HMD_SYNC hold (VRSyncHold): how long each wait slice is and the total cap, so
-// a stalled runtime can never hang the game.
+// HMD_SYNC hold (VRSyncHold): the socket-wait slice used while blocking for a
+// fresh HMD_SYNC.  The wait itself is unbounded on purpose (see Poll): if the
+// runtime stops sending, the game holds its last frame until data returns; the
+// WinlatorXR sandbox can always be torn down if the runtime is gone for good.
 #define XR_SYNC_HOLD_SLICE_MS	4
-#define XR_SYNC_HOLD_MAX_MS		24
 
 // ----------------------------------------------------------------------- //
 //  Quaternion / vector helpers.
 //
 //  XrApi is NOT OpenXR.  It hands us raw HMD/hand quaternions + positions.
-//  Both known consumers agree that the raw quaternion's Z (roll) component
-//  is inverted relative to the right-handed frame the old OpenXR bridge
-//  used: HWXR does (x,y,-z,w) and opentrackWXR does the same (its extra
-//  180-degree roll about Z is Halo-specific and commented out upstream).
-//  Raw positions are already right-handed (x right, y up, -z forward), so
-//  only the quaternion needs correcting before the OpenXR->LithTech step.
+//  Raw positions are right-handed (x right, y up, -z forward); the raw
+//  quaternions live in that same frame and pass through unchanged.  (The
+//  code once negated their Z component to match HWXR/opentrackWXR, but on
+//  device that reversed the head's roll - leaning left rolled the view
+//  right - while leaving yaw and pitch untouched, because a pure yaw or
+//  pitch quaternion has Z = 0.  Dropping the negation fixes the roll and
+//  cannot change the other two axes.)
 // ----------------------------------------------------------------------- //
 
-// Bring a raw XrApi quaternion into the OpenXR frame (negate Z).
+// Raw XrApi quaternions already match the pipeline frame (see above).
 static void XrQuatToOpenXR(const DFLOAT qIn[4], DFLOAT qOut[4])
 {
-	qOut[0] =  qIn[0];
-	qOut[1] =  qIn[1];
-	qOut[2] = -qIn[2];
-	qOut[3] =  qIn[3];
+	qOut[0] = qIn[0]; qOut[1] = qIn[1]; qOut[2] = qIn[2]; qOut[3] = qIn[3];
 }
 
 static void QMul(const DFLOAT a[4], const DFLOAT b[4], DFLOAT r[4])
@@ -316,7 +315,7 @@ void CXrApiUDP::Drain()
 	}
 }
 
-static DBOOL SocketReadable(DDWORD sock, int nMs)
+static int SocketReadable(DDWORD sock, int nMs)
 {
 	fd_set fds;
 	FD_ZERO(&fds);
@@ -324,7 +323,7 @@ static DBOOL SocketReadable(DDWORD sock, int nMs)
 	struct timeval tv;
 	tv.tv_sec  = nMs / 1000;
 	tv.tv_usec = (nMs % 1000) * 1000;
-	return (select(0, &fds, NULL, NULL, &tv) > 0) ? DTRUE : DFALSE;
+	return select(0, &fds, NULL, NULL, &tv);
 }
 
 DBOOL CXrApiUDP::Poll(XrApiPose &out)
@@ -336,17 +335,18 @@ DBOOL CXrApiUDP::Poll(XrApiPose &out)
 	{
 		Drain();
 
-		// Keep the app in step with the headset: wait until the runtime reports a
-		// fresh HMD_SYNC.  Bounded to XR_SYNC_HOLD_MAX_MS so a stalled runtime can
-		// never hang the game; only active when VRSyncHold is set.
+		// Keep the app in step with the headset: block (sleeping in select, no
+		// CPU) until the runtime reports a fresh HMD_SYNC.  This is deliberately
+		// unbounded - if the runtime stops sending, the game holds its last frame
+		// until data returns.  Only active when VRSyncHold is on and we've already
+		// seen a packet (so startup without a headset never blocks).
 		if (m_bSyncHold && m_bHaveRaw && m_bHavePrevSync)
 		{
-			DWORD dwStart = GetTickCount();
-			while (m_fLastSync == m_fPrevFrameSync)
+			while (m_bRunning && m_fLastSync == m_fPrevFrameSync)
 			{
-				if ((GetTickCount() - dwStart) >= XR_SYNC_HOLD_MAX_MS) break;
-				if (!SocketReadable(m_sockRecv, XR_SYNC_HOLD_SLICE_MS)) continue;
-				Drain();
+				int nReady = SocketReadable(m_sockRecv, XR_SYNC_HOLD_SLICE_MS);
+				if (nReady < 0) break;			// socket error: stop waiting rather than spin
+				if (nReady > 0) Drain();
 			}
 		}
 	}

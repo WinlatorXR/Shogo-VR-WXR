@@ -51,6 +51,7 @@ static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 	{ "dominant hand",			"Controls",	"LeftHanded",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "right-handed", "left-handed" }, { 0, 1 } },
 	{ "aim with",				"Game",		"VRAimMode",		VRS_CHOICE,	1,		0, 0, 0, 1,			"",			2, { "gun hand", "head" }, { 1, 0 } },
 	{ "two-handed aiming",		"Game",		"VRTwoHand",		VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "hand roll flip",			"Game",		"VRHandFlip",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "flipped", "as reported" }, { 0, 1 } },
 	{ "walk towards",			"Game",		"VRMoveDir",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			3, { "gun direction", "where you look", "other hand" }, { 0, 1, 2 } },
 	{ "turning",				"Game",		"VRSnapTurn",		VRS_CHOICE,	45,		0, 0, 0, 1,			"",			6, { "snap 15 deg", "snap 30 deg", "snap 45 deg", "snap 60 deg", "snap 90 deg", "smooth" }, { 15, 30, 45, 60, 90, 0 } },
 	{ "smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },

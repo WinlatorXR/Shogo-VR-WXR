@@ -108,6 +108,7 @@ class CVRStereo
 		DDWORD	GetPressed()			{ return m_nPressed; }
 		DDWORD	GetReleased()			{ return m_nReleased; }
 		void	SetGameplayInput(DBOOL b);
+		void	UpdateInput();				// per-frame: controller -> game commands / menu keys
 		DBOOL	GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight);	// left stick (DFALSE if centred)
 		int		PollWeaponCycle();			// right stick up/down: +1 next, -1 previous
 		int		PollMenuDirection();		// sticks as arrow keys, with key repeat
@@ -204,15 +205,24 @@ class CVRStereo
 		int		HideModelNodes(HLOCALOBJ hObj, DBOOL bHead, DBOOL bArms);
 		void	SetBodyAnim(const char* szAnim, DBOOL bLoop);
 		void	SetAllNodesHidden(HLOCALOBJ hObj, DBOOL bHide);
-		DBOOL	FindTransformKey(DDWORD &nScan, DBOOL &bExtended);
+		DBOOL	FindCommandKey(int nCommand, DDWORD &nScan, DBOOL &bExtended);
 		void	StartBridgeIfNeeded();
 		void	RememberCommandLine();
 		void	UpdateMechCrouch();
 		void	ReleaseTransformKey();
+		void	InjectScanTap(DDWORD nScan, DBOOL bExtended);
+		void	InjectCommandTap(int nCommand);
+		void	ReleaseInjectedKey();
 		int		SetArmNodesHidden(HLOCALOBJ hObj, DBOOL bHide);
 		void	DumpModelNodes(HLOCALOBJ hObj, int nWeaponId);
 		static DBOOL	Hook_IsCommandOn(int nCommand);
 		DBOOL	(*m_pfnIsCommandOn)(int);
+
+		// The mouse (and joystick) axes reach the game through GetAxisOffsets;
+		// while the controllers are live we answer with zeros so keyboard and
+		// mouse can't move or aim the player behind the mod's back.
+		static void		Hook_GetAxisOffsets(DFLOAT *offsets);
+		void	(*m_pfnGetAxisOffsets)(DFLOAT *);
 
 		// Replacement engine functions (only installed during a 2D pass)
 		static DRESULT	Hook_DrawSurfaceToSurface(HSURFACE hDest, HSURFACE hSrc, DRect *pSrcRect, int destX, int destY);
@@ -381,6 +391,9 @@ class CVRStereo
 		DDWORD		m_nTransformScan;
 		DBOOL		m_bTransformExt;
 		DBOOL		m_bWarnedNoTransformKey;
+		DDWORD		m_nInjScan;			// a key we pressed for the game, released on a timer
+		DBOOL		m_bInjExt;
+		DDWORD		m_nInjUpTick;
 		DBOOL		m_bStartedBridge;		// we started the headset bridge (and close it again)
 		int			m_nBridgeStarts;
 		DDWORD		m_nNextBridgeCheck;		// GetTickCount() of the next "is a bridge running?" check
@@ -430,6 +443,7 @@ class CVRStereo
 		VarTrack	m_vtVRFullscreen;	// VRFullscreen     1 = drop the title bar and fill the display
 		VarTrack	m_vtMoveDir;		// VRMoveDir        walk towards: 0 gun hand, 1 head, 2 other hand
 		VarTrack	m_vtTwoHand;		// VRTwoHand        1 = support the gun with your other hand to aim it
+		VarTrack	m_vtHandFlip;		// VRHandFlip       0 = flip hand/weapon 180 about roll (default), 1 = as reported
 		VarTrack	m_vtBody;			// VRBody           1 = show your body
 		VarTrack	m_vtBodyArms;		// VRBodyArms       1 = show the body's arms too (they can't follow your hands)
 		VarTrack	m_vtBodyOffset;		// VRBodyOffset     metres the body sits behind your eyes
@@ -446,7 +460,7 @@ class CVRStereo
 		VarTrack	m_vtEasyLadders;	// VREasyLadders    1 = on a ladder the stick climbs up/down
 		VarTrack	m_vtAutoBridge;		// VRAutoBridge     1 = start the headset bridge with the game
 		VarTrack	m_vtHaptics;		// VRHaptics        1 = pulse the controllers on fire/weapon edges
-		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = wait for a new HMD_SYNC each frame (bounded)
+		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = block for a new HMD_SYNC each frame (default on)
 };
 
 extern CVRStereo g_VRStereo;

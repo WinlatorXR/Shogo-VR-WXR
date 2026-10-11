@@ -14,7 +14,7 @@
 
 #include "BaseMenu.h"
 
-#define VRMENU_ITEMS	26
+#define VRMENU_ITEMS	27
 
 #if VRMENU_ITEMS > MAX_GENERIC_ITEMS
 #error VRMenu has more items than CBaseMenu::m_GenericItem can hold

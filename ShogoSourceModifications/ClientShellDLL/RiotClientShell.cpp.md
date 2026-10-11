@@ -128,20 +128,41 @@ Add:
 g_VRStereo.CheckSettingsFile();
 g_VRStereo.UpdateBridge();
 g_VRStereo.CheckRenderer(DTRUE);
+g_VRStereo.SetGameplayInput(m_nGameState == GS_PLAYING);
+g_VRStereo.UpdateInput();
 ```
+
+The last two lines let the VR module know whether we are actually playing (so it
+takes over gameplay input) and give it one chance per frame to turn controller
+edges into game commands / menu keys. See `Docs/BUGS_TO_FIX.md` #3.
 
 ---
 
-## 8. `CRiotClientShell::CalculateCameraRotation()`
+## 8. `CRiotClientShell::CalculateCameraRotation()` — two insertions
 
-**Part of:** `CRiotClientShell::CalculateCameraRotation()` (pristine line 2956),
-at the end of the function (after the existing pitch clamp).
+**Part of:** `CRiotClientShell::CalculateCameraRotation()` (pristine line 2956).
 
-Add:
+First, at the end of the function (after the existing pitch clamp), add:
 
 ```cpp
 g_VRStereo.ApplyHeadTracking(m_fYaw, m_fPitch);
 ```
+
+Second, where the function feeds the joystick/axis movement into the move
+manager (`m_MoveMgr->UpdateAxisMovement(...)`, around pristine line 3020),
+replace that single call so that, while the controllers are live, the left
+stick (via `GetMoveAxes`) drives movement instead of the keyboard/joystick axes:
+
+```cpp
+DFLOAT fVRFwd = 0.0f, fVRRight = 0.0f;
+if (g_VRStereo.GetMoveAxes(fVRFwd, fVRRight))
+	m_MoveMgr->UpdateAxisMovement(DTRUE, fVRFwd, 0.10f, DTRUE, fVRRight, 0.10f);
+else
+	m_MoveMgr->UpdateAxisMovement(<existing axis arguments>);
+```
+
+`<existing axis arguments>` stands for the four/five arguments already passed in
+your copy.
 
 ---
 

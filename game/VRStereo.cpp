@@ -24,6 +24,7 @@
 
 static void VRInstallCrashReporter();
 static void VRRemoveCrashReporter();
+static void VRSendScanCode(DDWORD nScan, DBOOL bExtended, DBOOL bUp);
 
 CVRStereo g_VRStereo;
 
@@ -134,6 +135,7 @@ CVRStereo::CVRStereo()
 	m_fLastIniCheck			= -100.0f;
 
 	m_pfnIsCommandOn		= DNULL;
+	m_pfnGetAxisOffsets		= DNULL;
 	m_nCtrlFlags			= 0;
 	m_nButtons				= 0;
 	m_nPrevButtons			= 0;
@@ -192,6 +194,9 @@ CVRStereo::CVRStereo()
 	m_nTransformScan		= 0;
 	m_bTransformExt			= DFALSE;
 	m_bWarnedNoTransformKey	= DFALSE;
+	m_nInjScan				= 0;
+	m_bInjExt				= DFALSE;
+	m_nInjUpTick			= 0;
 	m_bStartedBridge		= DFALSE;
 	m_nBridgeStarts			= 0;
 	m_nNextBridgeCheck		= 0;
@@ -274,6 +279,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtVRFullscreen.Init	(pClientDE, "VRFullscreen",		NULL, 1.0f);
 	m_vtMoveDir.Init		(pClientDE, "VRMoveDir",		NULL, 0.0f);
 	m_vtTwoHand.Init		(pClientDE, "VRTwoHand",		NULL, 1.0f);
+	m_vtHandFlip.Init		(pClientDE, "VRHandFlip",		NULL, 0.0f);
 	m_vtBody.Init			(pClientDE, "VRBody",			NULL, 1.0f);
 	m_vtBodyArms.Init		(pClientDE, "VRBodyArms",		NULL, 0.0f);
 	m_vtBodyOffset.Init		(pClientDE, "VRBodyOffset",		NULL, 0.15f);
@@ -282,7 +288,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtEasyLadders.Init	(pClientDE, "VREasyLadders",	NULL, 1.0f);
 	m_vtAutoBridge.Init		(pClientDE, "VRAutoBridge",		NULL, 1.0f);
 	m_vtHaptics.Init		(pClientDE, "VRHaptics",		NULL, 1.0f);
-	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 0.0f);
+	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 1.0f);
 	m_vtDirectCapture.Init	(pClientDE, "VRDirectCapture",	NULL, 1.0f);
 	m_vtHeldPitch.Init		(pClientDE, "VRHeldPitch",		NULL, 0.0f);
 	m_vtHeldYaw.Init		(pClientDE, "VRHeldYaw",		NULL, 0.0f);
@@ -303,6 +309,11 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	// answering "yes" when the game asks the engine whether they're on.
 	m_pfnIsCommandOn = pClientDE->IsCommandOn;
 	pClientDE->IsCommandOn = Hook_IsCommandOn;
+
+	// While the controllers are in use the mouse must not also turn the view
+	// (WinlatorXR injects the headset's mouse; we answer with nothing).
+	m_pfnGetAxisOffsets = pClientDE->GetAxisOffsets;
+	pClientDE->GetAxisOffsets = Hook_GetAxisOffsets;
 
 	LoadSettingsFile(DTRUE);
 	Log("Shogo VR started (CShell.dll built " __DATE__ " " __TIME__ ")");
@@ -380,6 +391,12 @@ void CVRStereo::Term()
 		m_pClientDE->IsCommandOn = m_pfnIsCommandOn;
 		m_pfnIsCommandOn = DNULL;
 	}
+	if (m_pClientDE && m_pfnGetAxisOffsets)
+	{
+		m_pClientDE->GetAxisOffsets = m_pfnGetAxisOffsets;
+		m_pfnGetAxisOffsets = DNULL;
+	}
+	if (m_nInjScan) { VRSendScanCode(m_nInjScan, m_bInjExt, DTRUE); m_nInjScan = 0; }
 	m_hAimMarker = DNULL;
 	m_hAimDot = DNULL;
 	m_hLaser = DNULL;
@@ -1806,8 +1823,23 @@ DBOOL CVRStereo::UsesControllerAim()
 DBOOL CVRStereo::Hook_IsCommandOn(int nCommand)
 {
 	CVRStereo &s = g_VRStereo;
-	if (s.m_pfnIsCommandOn && s.m_pfnIsCommandOn(nCommand)) return DTRUE;
+	// With the controllers in use the real keyboard is ignored, otherwise the
+	// WinlatorXR keyboard and the controllers would both drive the player.
+	if (!s.IsControllerActive() && s.m_pfnIsCommandOn && s.m_pfnIsCommandOn(nCommand)) return DTRUE;
 	return s.VRCommandOn(nCommand);
+}
+
+// Mouse look/strafe arrives here (the game's yaw/pitch and strafe flags).  With
+// the controllers in use the mouse must not also turn the view, so report none.
+void CVRStereo::Hook_GetAxisOffsets(DFLOAT *offsets)
+{
+	CVRStereo &s = g_VRStereo;
+	if (s.IsControllerActive())
+	{
+		offsets[0] = offsets[1] = offsets[2] = 0.0f;
+		return;
+	}
+	if (s.m_pfnGetAxisOffsets) s.m_pfnGetAxisOffsets(offsets);
 }
 
 DBOOL CVRStereo::VRCommandOn(int nCommand)
@@ -2046,6 +2078,12 @@ void CVRStereo::GetHandWorld(const DVector &vCamPos, DVector &vPos, DVector &vF,
 	VEC_MULSCALAR(vU, bR, m_vAimU.x);
 	VEC_MULSCALAR(vT, bU, m_vAimU.y);	VEC_ADD(vU, vU, vT);
 	VEC_MULSCALAR(vT, bF, m_vAimU.z);	VEC_ADD(vU, vU, vT);
+
+	// Some controllers report the hand upside down, so by default we rotate the
+	// hand/weapon 180 degrees about the barrel (roll) to agree with the hand.
+	// The flag is inverted: 0 (default) applies the roll correction, 1 leaves
+	// the hand as the runtime reported it.
+	if (m_vtHandFlip.GetFloat(0.0f) == 0.0f) VEC_MULSCALAR(vU, vU, -1.0f);
 }
 
 void CVRStereo::AdjustWeaponPose(DVector &vPos, DRotation &rRot, DBOOL bFootScale)
@@ -2924,7 +2962,7 @@ static DBOOL VRKeyNameToScan(const char* szName, DDWORD &nScan, DBOOL &bExtended
 	return DFALSE;
 }
 
-DBOOL CVRStereo::FindTransformKey(DDWORD &nScan, DBOOL &bExtended)
+DBOOL CVRStereo::FindCommandKey(int nCommand, DDWORD &nScan, DBOOL &bExtended)
 {
 	if (!m_pClientDE) return DFALSE;
 	char szName[INPUTNAME_LEN];
@@ -2937,7 +2975,7 @@ DBOOL CVRStereo::FindTransformKey(DDWORD &nScan, DBOOL &bExtended)
 		GameAction* pAction;
 		for (pAction = p->pActionHead; pAction; pAction = pAction->pNext)
 		{
-			if (pAction->nActionCode == COMMAND_ID_VEHICLETOGGLE)
+			if (pAction->nActionCode == nCommand)
 			{
 				strncpy(szName, p->strTriggerName, sizeof(szName) - 1);
 				szName[sizeof(szName) - 1] = 0;
@@ -2956,7 +2994,7 @@ void CVRStereo::RequestTransform()
 
 	DDWORD nScan = 0;
 	DBOOL bExt = DFALSE;
-	if (!FindTransformKey(nScan, bExt))
+	if (!FindCommandKey(COMMAND_ID_VEHICLETOGGLE, nScan, bExt))
 	{
 		if (!m_bWarnedNoTransformKey)
 		{
@@ -3008,6 +3046,79 @@ void CVRStereo::UpdateMechCrouch()
 		if (m_nCrouchDownTick && !m_bCrouchLong) RequestTransform();		// a tap
 		m_nCrouchDownTick = 0;
 		m_bCrouchLong = DFALSE;
+	}
+}
+
+// Press a key for the game and release it a few frames later, the way a human
+// would.  Some commands (weapon switching, vehicle toggle) are only handled
+// when the engine sees a real key press, so the controller taps their key.
+void CVRStereo::InjectScanTap(DDWORD nScan, DBOOL bExt)
+{
+	if (!m_nGameHwnd || GetForegroundWindow() != (HWND)m_nGameHwnd) return;
+	if (m_nInjScan) VRSendScanCode(m_nInjScan, m_bInjExt, DTRUE);		// release the previous tap
+	VRSendScanCode(nScan, bExt, DFALSE);
+	m_nInjScan		= nScan;
+	m_bInjExt		= bExt;
+	m_nInjUpTick	= GetTickCount() + 60;
+}
+
+void CVRStereo::InjectCommandTap(int nCommand)
+{
+	DDWORD nScan = 0;
+	DBOOL bExt = DFALSE;
+	if (FindCommandKey(nCommand, nScan, bExt)) InjectScanTap(nScan, bExt);
+}
+
+void CVRStereo::ReleaseInjectedKey()
+{
+	if (!m_nInjScan) return;
+	if ((long)(GetTickCount() - m_nInjUpTick) < 0) return;
+	VRSendScanCode(m_nInjScan, m_bInjExt, DTRUE);
+	m_nInjScan = 0;
+}
+
+// Per frame: turn controller edges into game commands (in a level) or into
+// menu keys (in the menus).  Continuous actions - fire, jump, crouch, movement
+// and turning - are read straight from the buttons/sticks elsewhere.
+void CVRStereo::UpdateInput()
+{
+	ReleaseInjectedKey();
+
+	if (!IsControllerActive())
+	{
+		m_bGameplayInput = DFALSE;
+		return;
+	}
+
+	DDWORD nPress = m_nPressed & ~m_nSuppressed;
+
+	if (m_bGameplayInput)
+	{
+		// Bring the menu up; from inside the menu the same button closes it.
+		if (nPress & SHOGOVR_BTN_MENU) InjectScanTap(0x01, DFALSE);			// Esc
+
+		// Weapon selection (the engine only reacts to a real key press).
+		if (nPress & SHOGOVR_BTN_NEXT_WEAPON) InjectCommandTap(COMMAND_ID_NEXT_WEAPON);
+		if (nPress & SHOGOVR_BTN_WEAPONS)     InjectCommandTap(COMMAND_ID_PREV_WEAPON);
+
+		int nCycle = PollWeaponCycle();
+		if (nCycle > 0)			InjectCommandTap(COMMAND_ID_NEXT_WEAPON);
+		else if (nCycle < 0)	InjectCommandTap(COMMAND_ID_PREV_WEAPON);
+	}
+	else
+	{
+		// Menus: the sticks walk the list (as the arrow keys), the buttons
+		// confirm and go back.
+		int nDir = PollMenuDirection();
+		if (nDir == VK_UP)			InjectScanTap(0x48, DTRUE);
+		else if (nDir == VK_DOWN)	InjectScanTap(0x50, DTRUE);
+		else if (nDir == VK_LEFT)	InjectScanTap(0x4B, DTRUE);
+		else if (nDir == VK_RIGHT)	InjectScanTap(0x4D, DTRUE);
+
+		if (m_nPressed & SHOGOVR_BTN_FIRE)	InjectScanTap(0x1C, DFALSE);	// Enter
+		if (nPress & SHOGOVR_BTN_JUMP)		InjectScanTap(0x1C, DFALSE);	// Enter
+		if (nPress & SHOGOVR_BTN_CROUCH)	InjectScanTap(0x0E, DFALSE);	// Backspace (back)
+		if (nPress & SHOGOVR_BTN_MENU)		InjectScanTap(0x01, DFALSE);	// Esc
 	}
 }
 
