@@ -12,6 +12,24 @@ Includes a `ShogoSourceModifications` folder with prose instructions describing 
 
 Code added or modified from the parent project in this fork/port over to WinlatorXR's XrApi is subject to the repository's [MIT license](https://opensource.org/license/mit), so that others may adapt it for their own C++ PC VR games and mods as well!
 
+This version has much less customization available to make it a clean open-and-play experience for standalone players, if you have the ability to play the original PCVR mod instead, absolutely do for the best experience!
+
+**SHOGO-VR-WXR CONTROLS**
+
+* Left controller stick: Move
+* Left controller stick click: Crouch (**hold**)
+* Left controller X button: Crouch (**toggle**)
+* Left controller Y button: Zoom toggle (if weapon has zoom)
+* Left controller grip: Jump
+* Left controller trigger: **F9 (quick load) while dead**; nothing while alive
+* Right controller trigger: Fire
+* Right controller grip: Double jump (a single jump when on foot)
+* Right controller A button: Toggle first/third person camera
+* Right controller B button: Toggle vehicle / mech mode
+* Left controller menu button: Menu / Esc (skip intro cutscenes)
+* Right controller stick: Turn (left/right) and change weapon (up/down)
+* Right controller stick click: Re-centre the view
+
 # Original SHOGO VR ReadMe Below
 
 <p align="center"><img src="launcher/assets/header.png" alt="In Memory of Monolith Productions - Shogo: Mobile Armor Division" width="640"></p>
