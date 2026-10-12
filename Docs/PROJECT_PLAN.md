@@ -319,12 +319,12 @@ readable, no split.
   recenter, monocular baseline then SBS correct, no dgVoodoo.
 - Logs: `ShogoVR\ShogoVR_game.log`, plus XrApi diagnostics.
 
-STATUS (Phase 5 overlay ready, device run pending): `tools/package_overlay.py`
+STATUS (Phase 5 overlay ready): `tools/package_overlay.py`
 assembles `build/overlay/ShogoVR/` from the built `CShell.dll` + `AUTHORS.txt` +
 `NOTICE.txt` (optionally a `ShogoVR.ini`). Copy that folder next to `Client.exe`
-inside the container and launch with the `-rez` list. **No Quest 3 / WinlatorXR
-run has happened yet** - only desktop smoke tests (see the Phase 2 STATUS notes).
-This is the single largest unknown in the project.
+inside the container and launch with the `-rez` list. (Superseded: this was the
+single largest unknown until the first device run - see the device-run status
+below.)
 
 STATUS (desktop test fix, 10 Oct 2026): first desktop level load crashed inside
 the Options menu's surface cleanup (`COptionsMenu::UnloadAllSurfaces`,
@@ -337,6 +337,19 @@ modified Monolith file, see `ShogoSourceModifications/ClientShellDLL/BaseMenu.h.
 and adding a compile-time guard in `game/VRMenu.h`
 (`#if VRMENU_ITEMS > MAX_GENERIC_ITEMS`). Build clean, deployed, smoke test ok
 (102 modules); needs a repeated level-load check.
+
+STATUS (device run, 10-11 Oct 2026): the port **has now run on the target** - Meta
+Quest 3 via WinlatorXR, launched from the custom `ShogoVR.exe` (launcher-xr), with
+the game at **2800x1400 SBS** (1400/eye). The on-device sessions exposed a set of
+comfort / render / input issues; those are now logged, root-caused and (mostly)
+fixed in `Docs/BUGS_TO_FIX.md` (#1-#12). In short: head roll (#1), hand roll
+(#2/#8), the whole controller input path (#3), fire (#4) and the stale-data hang
+(#9) are fixed in code; the intro splash/movies are drawn per-eye (#10, movies
+confirmed on device); left-stick movement is fixed in code (#11); still open are
+the menu sizing/centring (#5/#6), supersampling (#7) and the loading screen (#12).
+On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
+(sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
+issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
 
 ---
 
@@ -356,21 +369,64 @@ and adding a compile-time guard in `game/VRMenu.h`
 
 ## 6. Where we are, and the immediate next action
 
-Progress: **Phases 0-4 are code-complete; Phase 5's overlay is assembled but the
-port has never run on the target.** Everything so far has been built and smoke
-tested on the desktop only, never on the Quest 3 - that is the remaining unknown.
-After the 10 Oct fixes (level-load crash, and title bar + HMD_SYNC pixel via
-`VRFullscreen`), the desktop run should show a borderless window that fills the
-display with a red 10x10 sync square in its top-left corner; confirm that first.
+Progress: **Phases 0-5 are code-complete and the port has now run on the target**
+(Meta Quest 3 via WinlatorXR, launched from `ShogoVR.exe`, 2800x1400 SBS). The
+10-11 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
+that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#18)** - that file,
+not the phase statuses above, is the current source of truth. Most of those fixes
+are in code and await the next device pass; `#4` (fire) and `#9` (sync hold) were
+already verified on the desktop with the XrApi UDP Tester.
 
-The immediate next action is to get it onto the actual target and finish the parts
-that can only be tuned there:
+The 11 Oct 2026 session added six more in-code fixes (all awaiting a device pass):
 
-1. **Run on the target (Phase 5).** Copy `build\overlay\ShogoVR\` next to
-   `Client.exe` inside a WinlatorXR container and launch on the Quest 3 (or, first,
-   point the `XrApiUDPTester` at the in-game client to validate the wire path).
-   Watch `ShogoVR\ShogoVR_game.log` for `Headset connected (XrApi)`.
-2. **Tune Phase 2/3.** Confirm the post-`ToGameSpace` axis mapping (yaw/pitch sign,
-   hand-raise axis), the window fit, and the haptics against the headset, and try
-   the optional `VRSyncHold` (the bounded "hold until HMD_SYNC changes").
-3. **Then polish** whatever the device run exposes (menus/HUD readability, scales).
+- **#13 render resolution** - `launcher-xr\ShogoVR.cpp` now passes
+  `+screenwidth W +screenheight H` from the desktop resolution (and `build.cmd`
+  links `user32.lib`), instead of the engine's 640x480 default.
+- **#14 crosshair off by default** - the mod aim helper (`VRAimStyle`) defaults to
+  none, and the game's own crosshair is gated by a new `VRGameCrosshair` setting
+  (default off) via a `BeginCrosshair`/`EndCrosshair` pair wired in
+  `PlayerStats.cpp`. A "game crosshair" row was added to the in-game VR menu
+  (`VRMenu.cpp`, capacity 27 -> 28 in `VRMenu.h`/`BaseMenu.h`); the VR menu's
+  action-row index constants were also corrected (they had been off by one since
+  the "aim helper" row was added).
+- **#15 controller mapping (revised)** - `XrApiUDP.cpp` `ButtonBits()` and
+  `VRStereo.cpp` `VRCommandOn`/`UpdateInput` implement the requested layout
+  (left stick move, left stick click crouch-while-held, X crouch toggle, left grip
+  jump, left Y zoom, left trigger nothing while alive, right trigger fire, right
+  grip double jump, A view toggle, B transform, right stick turn + weapon cycle,
+  right stick click recentre). New `SHOGOVR_BTN_CROUCH_HOLD` bit; the
+  `SHOGOVR_BTN_PREV_WEAPON` bit was renamed to `SHOGOVR_BTN_LEFT_TRIGGER` in both
+  `ShogoVRShared.h` copies, and the prev/next-weapon buttons were dropped.
+- **#16 autosave/quicksave on death** - `RiotClientShell.cpp` feeds
+  `g_VRStereo.SetPlayerDead(IsPlayerDead())` each frame and calls
+  `g_VRStereo.SetLevelLoaded()` when a level becomes playable; the mod taps F6
+  (quicksave) once ~2 s into gameplay, and the left trigger taps F9 (quickload)
+  while dead (replacing the dead-end Enter path). Documented as edit 18 in
+  `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`.
+- **#17 face-button key leak** - WinlatorXR also sends the controller face
+  buttons as the keyboard letters X/Y/B/A; `VRStereo.cpp`
+  `ShouldSwallowFaceKey()` plus `RiotClientShell.cpp` `OnKeyDown`/`OnKeyUp`
+  (`ClearInput()` + early return) drop them while playing and alive.
+- **#18 Left-Y weapon zoom** - no zoom command exists; zoom is toggled by
+  re-selecting the equipped weapon. `VRStereo.cpp` caches the held weapon id
+  (`UpdateHeldGun`) and `UpdateInput` maps it back with `GetCommandId(...)` and
+  taps that command (via the new `#include "WeaponDefs.h"`).
+
+This brings the tracked ShogoSource notes to **eight** files
+(`ShogoSourceModifications/` now also documents `PlayerStats.cpp`).
+
+The immediate next actions are:
+
+1. **Re-run on the target and verify the in-code fixes.** Already verified on
+   device: head roll (#1), hands (#2/#8), controller input + no kb/mouse leakage
+   (#3), fire (#4), intro movies/splash (#10). Still to verify: left-stick
+   movement (#11), the new render resolution (#13), the crosshair default (#14),
+   the revised control layout (#15), the auto-quicksave/quickload-on-death flow
+   (#16), the face-button key leak fix (#17) and Left-Y weapon zoom (#18).
+2. **Fix the open render issues** (all in-headset 2D/SBS sizing): menu size (#5),
+   menu centring at 2800x1400 (#6), supersampling (#7) and the loading screen
+   (#12).
+3. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
+   each fix's device-verification status and drop the matching prose note under
+   `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource
+   change.

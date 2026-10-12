@@ -9,6 +9,7 @@
 #include "VRStereo.h"
 #include "ClientWeaponUtils.h"
 #include "RiotCommandIDs.h"
+#include "WeaponDefs.h"
 #include "ModelFuncs.h"
 #include "CharacterAlignment.h"
 #include "VRCapture.h"
@@ -97,6 +98,7 @@ CVRStereo::CVRStereo()
 	m_hMapping				= DNULL;
 	m_pShared				= DNULL;
 	m_bBridgeAlive			= DFALSE;
+	m_bMenuLayoutDirty		= DFALSE;
 	m_nLastBridgeBeat		= 0;
 	m_fLastBridgeBeatTime	= -100.0f;
 	m_nBridgeFlags			= 0;
@@ -149,10 +151,15 @@ CVRStereo::CVRStereo()
 	m_bGameplayInput		= DFALSE;
 	m_nSuppressed			= 0;
 	m_bAimByHand			= DFALSE;
+	m_bPlayerDead			= DFALSE;
+	m_bCrouchOn				= DFALSE;
+	m_bAutosavePending		= DFALSE;
+	m_nAutosaveFrames		= 0;
 	m_bHaveBody				= DFALSE;
 	m_fLastOutYaw			= 0.0f;
 	m_bSnapLatched			= DFALSE;
 	m_nWeaponLatch			= 0;
+	m_nWeaponId				= -1;
 	m_nMenuDir				= 0;
 	m_fMenuRepeatTime		= 0.0f;
 	m_fWorldScaleUsed		= 40.0f;
@@ -187,8 +194,6 @@ CVRStereo::CVRStereo()
 	m_bLoggedBridge			= DFALSE;
 	m_nLoggedHudStrip		= -1;
 	m_nLoggedCapture		= 0;
-	m_nCrouchDownTick		= 0;
-	m_bCrouchLong			= DFALSE;
 	m_bTransformKeyDown		= DFALSE;
 	m_nTransformUpTick		= 0;
 	m_nTransformScan		= 0;
@@ -216,6 +221,9 @@ CVRStereo::CVRStereo()
 	m_pfnGetFrameTime						= DNULL;
 	m_pfnGetSurfaceDims						= DNULL;
 	m_pfnGetCameraRect						= DNULL;
+	m_hMovieSurface							= DNULL;
+	memset(&m_rcMovieSrc, 0, sizeof(m_rcMovieSrc));
+	m_bMovieSrcKnown						= DFALSE;
 	m_bVirtualHud							= DFALSE;
 	m_bSkipNonCross							= DFALSE;
 	m_bFlatFrame							= DFALSE;
@@ -226,6 +234,9 @@ CVRStereo::CVRStereo()
 	m_nHudScale								= 1;
 	m_fHudVirtW								= 512.0f;
 	m_fHudVirtH								= 384.0f;
+	m_fMenuVirtW							= 640.0f;
+	m_fMenuVirtH							= 480.0f;
+	m_bVirtual2D							= DFALSE;
 	m_fVirtW								= 640.0f;
 	m_fVirtH								= 480.0f;
 
@@ -251,6 +262,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtHudWidth.Init		(pClientDE, "VRHudWidth",		NULL, 60.0f);
 	m_vtHudLayout.Init		(pClientDE, "VRHudLayout",		NULL, 512.0f);
 	m_vtMenuWidth.Init		(pClientDE, "VRMenuWidth",		NULL, 80.0f);
+	m_vtMenuLayout.Init		(pClientDE, "VRMenuLayout",		NULL, 640.0f);
 	m_vtHudStrip.Init		(pClientDE, "VRHudStrip",		NULL, -1.0f);
 	m_vtHudPixels.Init		(pClientDE, "VRHudPixels",		NULL, 1.0f);
 	m_vtHudSnap.Init		(pClientDE, "VRHudSnap",		NULL, 1.0f);
@@ -271,7 +283,8 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtGunY.Init			(pClientDE, "VRGunY",			NULL, 0.0f);
 	m_vtGunZ.Init			(pClientDE, "VRGunZ",			NULL, 0.0f);
 	m_vtAimMarker.Init		(pClientDE, "VRAimMarker",		NULL, 1.0f);
-	m_vtAimStyle.Init		(pClientDE, "VRAimStyle",		NULL, 2.0f);
+	m_vtAimStyle.Init		(pClientDE, "VRAimStyle",		NULL, 3.0f);
+	m_vtGameCrosshair.Init	(pClientDE, "VRGameCrosshair",	NULL, 0.0f);
 	m_vtAimDotSize.Init		(pClientDE, "VRAimDotSize",		NULL, 1.0f);
 	m_vtGunScale.Init		(pClientDE, "VRGunScale",		NULL, 1.5f);
 	m_vtGunScaleMCA.Init	(pClientDE, "VRGunScaleMCA",	NULL, 1.0f);
@@ -397,6 +410,11 @@ void CVRStereo::Term()
 		m_pfnGetAxisOffsets = DNULL;
 	}
 	if (m_nInjScan) { VRSendScanCode(m_nInjScan, m_bInjExt, DTRUE); m_nInjScan = 0; }
+	if (m_hMovieSurface && m_pClientDE)
+	{
+		m_pClientDE->DeleteSurface(m_hMovieSurface);
+		m_hMovieSurface = DNULL;
+	}
 	m_hAimMarker = DNULL;
 	m_hAimDot = DNULL;
 	m_hLaser = DNULL;
@@ -508,6 +526,17 @@ void CVRStereo::ComputeLayout()
 	m_fHudVirtW = (DFLOAT)VRRound(fLayout);
 	m_fHudVirtH = (DFLOAT)VRRound(fLayout * 0.75f);
 
+	// The options/menu tree is laid out for a virtual screen too, so its
+	// native fonts get scaled *up* into the headset panel and stay readable.
+	// 640 is the resolution the menus were designed for (it is also the
+	// threshold below which they switch to a smaller font), so 640 keeps the
+	// original look; smaller values trade content for a larger text size.
+	DFLOAT fMenuLayout = m_vtMenuLayout.GetFloat(640.0f);
+	if (fMenuLayout < 320.0f) fMenuLayout = 320.0f;
+	if (fMenuLayout > (DFLOAT)m_nScreenW) fMenuLayout = (DFLOAT)m_nScreenW;
+	m_fMenuVirtW = (DFLOAT)VRRound(fMenuLayout);
+	m_fMenuVirtH = (DFLOAT)VRRound(fMenuLayout * 0.75f);
+
 	// ...and, when possible, drawn once at its original pixel size into a
 	// strip along the bottom of the window, which the bridge shows as its own
 	// panel - pixel-exact instead of being squeezed into each eye's picture.
@@ -550,7 +579,11 @@ void CVRStereo::ComputeLayout()
 
 DBOOL CVRStereo::SkipThisDraw()
 {
-	if (m_bCrosshairPass && m_bAimByHand) return DTRUE;			// the 3D aim dot replaces it
+	if (m_bCrosshairPass)
+	{
+		if (m_vtGameCrosshair.GetFloat(0.0f) == 0.0f) return DTRUE;	// the game's crosshair is off by default
+		if (m_bAimByHand) return DTRUE;								// the 3D aim dot replaces it
+	}
 	if (m_bSkipNonCross && !(m_bCrosshairPass && m_bLastImmersive)) return DTRUE;	// HUD already in its strip
 	return DFALSE;
 }
@@ -653,8 +686,8 @@ void CVRStereo::ComputeXform(int nEye, DFLOAT fScaleX, DFLOAT fScaleY, DFLOAT fS
 
 void CVRStereo::ComputeHudXform(int nEye, DBOOL bVirtualHud, VRXform &x)
 {
-	DFLOAT fVirtW = bVirtualHud ? m_fVirtW : (DFLOAT)m_nScreenW;
-	DFLOAT fVirtH = bVirtualHud ? m_fVirtH : (DFLOAT)m_nScreenH;
+	DFLOAT fVirtW = m_bVirtual2D ? m_fVirtW : (DFLOAT)m_nScreenW;
+	DFLOAT fVirtH = m_bVirtual2D ? m_fVirtH : (DFLOAT)m_nScreenH;
 	DFLOAT sx, sy;
 
 	if (m_bBridgeAlive)
@@ -989,16 +1022,23 @@ void CVRStereo::Begin2D(int nEye, DBOOL bHud)
 	m_nCurEye = nEye;
 	m_hScreen = m_pClientDE->GetScreenSurface();
 
-	// In the headset, the in-game HUD is laid out for a smaller (4:3)
-	// virtual screen: Shogo's HUD art has a fixed pixel size, so a smaller
-	// layout makes it bigger, and it pulls the corner gauges in from the
-	// blurry edges of the lenses.  Menus keep their own layout.
+	// In the headset the in-game HUD and the options/menus are laid out for
+	// small virtual screens: Shogo's art and fonts have fixed pixel sizes, so
+	// a smaller layout makes them bigger, and it pulls the HUD's corner gauges
+	// in from the blurry edges of the lenses.  Menus get their own virtual
+	// size (see ComputeLayout) so their native fonts stay readable.
 
 	m_bVirtualHud = bHud && m_bBridgeAlive;
+	m_bVirtual2D  = m_bBridgeAlive;		// this 2D pass lays out virtually (HUD or menu)
 	if (m_bVirtualHud)
 	{
 		m_fVirtW = m_fHudVirtW;
 		m_fVirtH = m_fHudVirtH;
+	}
+	else if (m_bBridgeAlive)
+	{
+		m_fVirtW = m_fMenuVirtW;
+		m_fVirtH = m_fMenuVirtH;
 	}
 	else
 	{
@@ -1063,6 +1103,156 @@ void CVRStereo::End2D()
 	m_bSkipNonCross = DFALSE;
 	m_fVirtW = (DFLOAT)m_nScreenW;
 	m_fVirtH = (DFLOAT)m_nScreenH;
+}
+
+// The engine's movie player (inside Client.exe) draws the Smacker frame
+// straight into the window buffer, centred on the whole SBS image, so the
+// mod can't intercept it to place it in an eye.  Clone the finished frame so
+// the movie shows in the middle of each half: WinlatorXR shows the left half
+// to the left eye and the right half to the right eye, so both eyes see the
+// intro.  Done with the original (unhooked) surface calls.
+void CVRStereo::ShiftMovieToRightHalf()
+{
+	if (!m_pClientDE) return;
+
+	// The movie plays right at startup, possibly before any Begin2D/End2D has
+	// come round to InstallHooks(), so the original pointers may not be cached
+	// yet.  Snapshot them if needed (when hooks aren't installed the table
+	// still holds the originals).
+	if (!m_pfnDrawSurfaceToSurface || !m_pfnFillRect || !m_pfnGetSurfaceDims)
+	{
+		m_pfnDrawSurfaceToSurface	= m_pClientDE->DrawSurfaceToSurface;
+		m_pfnFillRect				= m_pClientDE->FillRect;
+		m_pfnGetSurfaceDims			= m_pClientDE->GetSurfaceDims;
+	}
+	if (!m_pfnDrawSurfaceToSurface || !m_pfnFillRect || !m_pfnGetSurfaceDims) return;
+
+	HSURFACE hScreen = m_pClientDE->GetScreenSurface();
+	if (!hScreen) return;
+
+	DDWORD nW = 0, nH = 0;
+	m_pfnGetSurfaceDims(hScreen, &nW, &nH);
+	if (nW < 8 || nH < 1) return;
+
+	static DBOOL s_bLogged = DFALSE;
+	if (!s_bLogged)
+	{
+		Log("movie frame clone: window %dx%d", (int)nW, (int)nH);
+		s_bLogged = DTRUE;
+	}
+
+	// Keep a scratch surface the size of the window (recreate if resized).
+	if (m_hMovieSurface)
+	{
+		DDWORD nTW = 0, nTH = 0;
+		m_pfnGetSurfaceDims(m_hMovieSurface, &nTW, &nTH);
+		if (nTW != nW || nTH != nH)
+		{
+			m_pClientDE->DeleteSurface(m_hMovieSurface);
+			m_hMovieSurface = DNULL;
+			m_bMovieSrcKnown = DFALSE;
+		}
+	}
+	if (!m_hMovieSurface)
+	{
+		m_hMovieSurface = m_pClientDE->CreateSurface(nW, nH);
+		if (!m_hMovieSurface) return;
+	}
+
+	// Some renderers only accept these blits inside the optimized-2D block.
+	m_pClientDE->StartOptimized2D();
+	// 1) copy the whole window into the scratch surface
+	m_pfnDrawSurfaceToSurface(m_hMovieSurface, hScreen, DNULL, 0, 0);
+
+	// 2) the first frame of each movie: find where the video is, so we can
+	//    draw it into each half with positive coordinates only.
+	if (!m_bMovieSrcKnown) DetectMovieSource();
+
+	// 3) paint the whole screen pure black (SetupColor1 gives a real engine
+	//    black; a raw 0 isn't one) so nothing old shows through behind the
+	//    two clones, then draw the video into each half.
+	DRect rcFull;
+	rcFull.left = 0; rcFull.top = 0; rcFull.right = (int)nW; rcFull.bottom = (int)nH;
+	m_pfnFillRect(hScreen, &rcFull, m_pClientDE->SetupColor1(0.0f, 0.0f, 0.0f, DFALSE));
+
+	int vw = m_rcMovieSrc.right - m_rcMovieSrc.left;
+	int vh = m_rcMovieSrc.bottom - m_rcMovieSrc.top;
+	if (m_bMovieSrcKnown && vw > 0 && vh > 0 && vw <= (int)nW / 2 && vh <= (int)nH)
+	{
+		int xL = (int)nW / 4 - vw / 2;			// middle of the left half
+		int xR = (int)nW - (int)nW / 4 - vw / 2;	// middle of the right half
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xL, 0);
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xR, 0);
+	}
+	else
+	{
+		// Couldn't find the movie: keep the plain right-half slide.
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, 0);
+	}
+
+	m_pClientDE->EndOptimized2D();
+}
+
+// Find where the movie sits inside a just-captured copy of the window.  The
+// player centres the video on the window with black all around, so the
+// smallest box holding non-black pixels in the centre band is the movie.
+void CVRStereo::DetectMovieSource()
+{
+	m_bMovieSrcKnown = DFALSE;
+	memset(&m_rcMovieSrc, 0, sizeof(m_rcMovieSrc));
+	if (!m_pClientDE || !m_hMovieSurface || !m_pfnGetSurfaceDims) return;
+
+	DDWORD nW = 0, nH = 0;
+	m_pfnGetSurfaceDims(m_hMovieSurface, &nW, &nH);
+	if (nW < 8 || nH < 1) return;
+
+	int nL = (int)nW / 4;
+	int nR = (int)nW - nL;
+	int nMinX = nR, nMaxX = nL, nMinY = (int)nH, nMaxY = 0;
+
+	HDECOLOR hBlack = m_pClientDE->SetupColor1(0.0f, 0.0f, 0.0f, DFALSE);
+	HDECOLOR c = 0;
+	DDWORD x, y;
+	int rows[3] = { (int)nH / 4, (int)nH / 2, (int)nH * 3 / 4 };
+	int cols[3] = { nL, (int)nW / 2, nR };
+
+	for (int r = 0; r < 3; r++)
+	{
+		for (x = (DDWORD)nL; x < (DDWORD)nR; x++)
+		{
+			if (m_pClientDE->GetPixel(m_hMovieSurface, x, (DDWORD)rows[r], &c) == DE_OK && c != hBlack)
+			{
+				if ((int)x < nMinX) nMinX = (int)x;
+				if ((int)x > nMaxX) nMaxX = (int)x;
+			}
+		}
+	}
+	for (int ci = 0; ci < 3; ci++)
+	{
+		for (y = 0; y < nH; y++)
+		{
+			if (m_pClientDE->GetPixel(m_hMovieSurface, (DDWORD)cols[ci], y, &c) == DE_OK && c != hBlack)
+			{
+				if ((int)y < nMinY) nMinY = (int)y;
+				if ((int)y > nMaxY) nMaxY = (int)y;
+			}
+		}
+	}
+
+	if (nMaxX > nMinX && nMaxY > nMinY)
+	{
+		m_rcMovieSrc.left	= nMinX;
+		m_rcMovieSrc.right	= nMaxX + 1;
+		m_rcMovieSrc.top	= nMinY;
+		m_rcMovieSrc.bottom	= nMaxY + 1;
+		m_bMovieSrcKnown	= DTRUE;
+		Log("movie source detected: %d,%d - %d,%d", m_rcMovieSrc.left, m_rcMovieSrc.top, m_rcMovieSrc.right, m_rcMovieSrc.bottom);
+	}
+}
+
+void CVRStereo::ResetMovieSource()
+{
+	m_bMovieSrcKnown = DFALSE;
 }
 
 void CVRStereo::InstallHooks()
@@ -1599,8 +1789,6 @@ void CVRStereo::UpdateBridge()
 	m_nSuppressed	&= m_nButtons;
 	m_bAimByHand	= DFALSE;		// ApplyHeadTracking sets it again during gameplay
 
-	UpdateMechCrouch();
-
 	if (!IsHeadTracking()) m_bHaveBody = DFALSE;
 	if (!IsActive()) m_nReportViewMode = SHOGOVR_VIEW_OFF;
 
@@ -1820,6 +2008,20 @@ DBOOL CVRStereo::UsesControllerAim()
 	return IsControllerActive() && (m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE) && m_vtAimMode.GetFloat(1.0f) != 0.0f;
 }
 
+// WinlatorXR maps the controller face buttons to the keyboard letters X/Y/B/A
+// on top of the XrApi feed, so the game sees stray keystrokes for buttons the
+// VR module already handles.  While the game is live and the player is alive,
+// drop them (see CRiotClientShell::OnKeyDown/OnKeyUp).
+DBOOL CVRStereo::ShouldSwallowFaceKey(int nVk)
+{
+	if (!IsControllerActive() || !m_bGameplayInput || m_bPlayerDead) return DFALSE;
+	switch (nVk)
+	{
+		case 'A': case 'B': case 'X': case 'Y': return DTRUE;
+	}
+	return DFALSE;
+}
+
 DBOOL CVRStereo::Hook_IsCommandOn(int nCommand)
 {
 	CVRStereo &s = g_VRStereo;
@@ -1850,8 +2052,30 @@ DBOOL CVRStereo::VRCommandOn(int nCommand)
 	switch (nCommand)
 	{
 		case COMMAND_ID_FIRING:	return (nHeld & SHOGOVR_BTN_FIRE) ? DTRUE : DFALSE;
-		case COMMAND_ID_JUMP:	return (nHeld & SHOGOVR_BTN_JUMP) ? DTRUE : DFALSE;
-		case COMMAND_ID_DUCK:	return m_bMech ? m_bCrouchLong : ((nHeld & SHOGOVR_BTN_CROUCH) ? DTRUE : DFALSE);
+		case COMMAND_ID_JUMP:	return (nHeld & (SHOGOVR_BTN_JUMP | SHOGOVR_BTN_DOUBLEJUMP)) ? DTRUE : DFALSE;
+		case COMMAND_ID_DOUBLEJUMP:	return (nHeld & SHOGOVR_BTN_DOUBLEJUMP) ? DTRUE : DFALSE;
+		case COMMAND_ID_DUCK:	return (m_bCrouchOn || (nHeld & SHOGOVR_BTN_CROUCH_HOLD)) ? DTRUE : DFALSE;
+
+		// Walking.  The engine has no "set command" call exposed to the shell,
+		// so movement flags are driven through this query instead:
+		// CMoveMgr::UpdateControlFlags() reads IsCommandOn(FORWARD/REVERSE/
+		// STRAFE_*) each frame to build BC_CFLG_*, and the analog axis values
+		// stored by UpdateAxisMovement cap the speed.  Turning stays on the
+		// right stick (StickTurn).  GetMoveAxes() applies the dead-zone and the
+		// same rotate-to-aim transform the speed caps use, so direction and
+		// speed agree.
+		case COMMAND_ID_FORWARD:
+		case COMMAND_ID_REVERSE:
+		case COMMAND_ID_STRAFE_RIGHT:
+		case COMMAND_ID_STRAFE_LEFT:
+		{
+			DFLOAT fFwd = 0.0f, fRight = 0.0f;
+			GetMoveAxes(fFwd, fRight);
+			if (nCommand == COMMAND_ID_FORWARD)      return (fFwd  > 0.0f) ? DTRUE : DFALSE;
+			if (nCommand == COMMAND_ID_REVERSE)      return (fFwd  < 0.0f) ? DTRUE : DFALSE;
+			if (nCommand == COMMAND_ID_STRAFE_RIGHT) return (fRight > 0.0f) ? DTRUE : DFALSE;
+			return (fRight < 0.0f) ? DTRUE : DFALSE;
+		}
 	}
 	return DFALSE;
 }
@@ -3021,34 +3245,6 @@ void CVRStereo::ReleaseTransformKey()
 	m_bTransformKeyDown = DFALSE;
 }
 
-// In a mech: tap the crouch button to transform, hold it (0.35 s) to crouch.
-void CVRStereo::UpdateMechCrouch()
-{
-	if (m_bTransformKeyDown && (long)(GetTickCount() - m_nTransformUpTick) >= 0) ReleaseTransformKey();
-
-	DDWORD nHeld = m_nButtons & ~m_nSuppressed;
-	if (!m_bMech || !m_bGameplayInput || !IsControllerActive())
-	{
-		m_nCrouchDownTick = 0;
-		m_bCrouchLong = DFALSE;
-		return;
-	}
-
-	if ((m_nPressed & ~m_nSuppressed) & SHOGOVR_BTN_TRANSFORM) RequestTransform();		// a button bound in SteamVR
-
-	if (nHeld & SHOGOVR_BTN_CROUCH)
-	{
-		if (!m_nCrouchDownTick) m_nCrouchDownTick = GetTickCount() | 1;
-		if (GetTickCount() - m_nCrouchDownTick >= 350) m_bCrouchLong = DTRUE;
-	}
-	else
-	{
-		if (m_nCrouchDownTick && !m_bCrouchLong) RequestTransform();		// a tap
-		m_nCrouchDownTick = 0;
-		m_bCrouchLong = DFALSE;
-	}
-}
-
 // Press a key for the game and release it a few frames later, the way a human
 // would.  Some commands (weapon switching, vehicle toggle) are only handled
 // when the engine sees a real key press, so the controller taps their key.
@@ -3083,23 +3279,63 @@ void CVRStereo::ReleaseInjectedKey()
 void CVRStereo::UpdateInput()
 {
 	ReleaseInjectedKey();
+	if (m_bTransformKeyDown && (long)(GetTickCount() - m_nTransformUpTick) >= 0) ReleaseTransformKey();
 
 	if (!IsControllerActive())
 	{
 		m_bGameplayInput = DFALSE;
+		m_bCrouchOn = DFALSE;
 		return;
 	}
 
 	DDWORD nPress = m_nPressed & ~m_nSuppressed;
+
+	// Level start: once a level has loaded, wait for a moment of actually
+	// playing (so any opening cutscene has ended), then quicksave so the left
+	// trigger can reload it on death (#16).
+	if (m_bAutosavePending)
+	{
+		if (m_bGameplayInput && !m_bPlayerDead)
+		{
+			if (++m_nAutosaveFrames >= 120)		// ~2 seconds
+			{
+				InjectCommandTap(COMMAND_ID_QUICKSAVE);
+				m_bAutosavePending = DFALSE;
+				m_nAutosaveFrames = 0;
+			}
+		}
+		else m_nAutosaveFrames = 0;
+	}
 
 	if (m_bGameplayInput)
 	{
 		// Bring the menu up; from inside the menu the same button closes it.
 		if (nPress & SHOGOVR_BTN_MENU) InjectScanTap(0x01, DFALSE);			// Esc
 
-		// Weapon selection (the engine only reacts to a real key press).
+		// Weapon selection: the bridge maps its buttons here; the XrApi path
+		// changes weapons with the right stick (PollWeaponCycle below), so no
+		// button is mapped to next/previous weapon.
 		if (nPress & SHOGOVR_BTN_NEXT_WEAPON) InjectCommandTap(COMMAND_ID_NEXT_WEAPON);
-		if (nPress & SHOGOVR_BTN_WEAPONS)     InjectCommandTap(COMMAND_ID_PREV_WEAPON);
+
+		// Left trigger: nothing while alive; while dead it loads the quicksave.
+		if ((nPress & SHOGOVR_BTN_LEFT_TRIGGER) && m_bPlayerDead)
+			InjectCommandTap(COMMAND_ID_QUICKLOAD);
+
+		// Left Y: re-select the equipped weapon, which toggles its zoom (#18).
+		if (nPress & SHOGOVR_BTN_ZOOM)
+		{
+			int nCmd = GetCommandId(m_nWeaponId);
+			if (nCmd > 0) InjectCommandTap(nCmd);
+		}
+		// Right A: first/third person view.
+		if (nPress & SHOGOVR_BTN_VIEWTOGGLE)	InjectCommandTap(COMMAND_ID_CHASEVIEWTOGGLE);
+		// Right stick click: recentre the view.
+		if (nPress & SHOGOVR_BTN_RECENTER)		RequestRecenter();
+		// Right B: transform vehicle/mech.
+		if (nPress & SHOGOVR_BTN_TRANSFORM)		RequestTransform();
+		// Left X: crouch on/off.  Left stick click is crouch while held
+		// (read straight from the buttons in VRCommandOn).
+		if (nPress & SHOGOVR_BTN_CROUCH)		m_bCrouchOn = m_bCrouchOn ? DFALSE : DTRUE;
 
 		int nCycle = PollWeaponCycle();
 		if (nCycle > 0)			InjectCommandTap(COMMAND_ID_NEXT_WEAPON);
@@ -3115,10 +3351,10 @@ void CVRStereo::UpdateInput()
 		else if (nDir == VK_LEFT)	InjectScanTap(0x4B, DTRUE);
 		else if (nDir == VK_RIGHT)	InjectScanTap(0x4D, DTRUE);
 
-		if (m_nPressed & SHOGOVR_BTN_FIRE)	InjectScanTap(0x1C, DFALSE);	// Enter
-		if (nPress & SHOGOVR_BTN_JUMP)		InjectScanTap(0x1C, DFALSE);	// Enter
-		if (nPress & SHOGOVR_BTN_CROUCH)	InjectScanTap(0x0E, DFALSE);	// Backspace (back)
-		if (nPress & SHOGOVR_BTN_MENU)		InjectScanTap(0x01, DFALSE);	// Esc
+		if (m_nPressed & SHOGOVR_BTN_FIRE)		InjectScanTap(0x1C, DFALSE);	// Enter
+		if (nPress & SHOGOVR_BTN_VIEWTOGGLE)	InjectScanTap(0x1C, DFALSE);	// Enter
+		if (nPress & SHOGOVR_BTN_CROUCH)		InjectScanTap(0x0E, DFALSE);	// Backspace (back)
+		if (nPress & SHOGOVR_BTN_MENU)			InjectScanTap(0x01, DFALSE);	// Esc
 	}
 }
 
@@ -3368,6 +3604,9 @@ void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &
 {
 	if (!m_pClientDE) return;
 	CClientDE* pClientDE = m_pClientDE;
+
+	// Remember the equipped weapon so Left-Y can re-select it (zoom toggle).
+	m_nWeaponId = nWeaponId;
 
 	// Only when the hand aims, the option is on, and the game is actually
 	// showing a gun right now (not mid-switch, not with view weapons off).

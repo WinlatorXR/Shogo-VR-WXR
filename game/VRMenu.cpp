@@ -27,9 +27,9 @@
 #define VRS_TOGGLE		2
 #define VRS_ACTION		3
 
-#define VRM_RECENTER	23
-#define VRM_DEFAULTS	24
-#define VRM_BACK		25
+#define VRM_RECENTER	25
+#define VRM_DEFAULTS	26
+#define VRM_BACK		27
 
 struct VRMenuSetting
 {
@@ -58,7 +58,8 @@ static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 	{ "comfort vignette",		"Comfort",	"Vignette",			VRS_RANGE,	0,		0, 1, 0.1f, 100,	"%",		0, { 0 }, { 0 } },
 	{ "lean with head (6dof)",	"Game",		"VRHeadPosition",	VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
 	{ "stereo depth",			"Game",		"VRIPD",			VRS_RANGE,	64,		50, 80, 1, 1,		" mm",		0, { 0 }, { 0 } },
-	{ "aim helper",				"Game",		"VRAimStyle",		VRS_CHOICE,	2,		0, 0, 0, 1,			"",			4, { "laser", "dot", "reticle", "none" }, { 0, 1, 2, 3 } },
+	{ "aim helper",				"Game",		"VRAimStyle",		VRS_CHOICE,	3,		0, 0, 0, 1,			"",			4, { "laser", "dot", "reticle", "none" }, { 0, 1, 2, 3 } },
+	{ "game crosshair",			"Game",		"VRGameCrosshair",	VRS_TOGGLE,	0,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
 	{ "show body",				"Game",		"VRBody",			VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
 	{ "body arms",				"Game",		"VRBodyArms",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "hidden", "shown" }, { 0, 1 } },
 	{ "gun model",				"Game",		"VRGunModel",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "first person (detailed)", "third person (simple)" }, { 0, 1 } },

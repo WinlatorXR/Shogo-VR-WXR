@@ -9,6 +9,6 @@ rc.exe /nologo /fo ShogoVR.res ShogoVR.rc
 if errorlevel 1 exit /b 1
 cl.exe /nologo /O2 /MT /EHsc /W3 /DUNICODE /D_UNICODE /c ShogoVR.cpp
 if errorlevel 1 exit /b 1
-link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:ShogoVR.exe ShogoVR.obj ShogoVR.res
+link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:ShogoVR.exe ShogoVR.obj ShogoVR.res user32.lib
 if errorlevel 1 exit /b 1
 echo ShogoVR.exe built.

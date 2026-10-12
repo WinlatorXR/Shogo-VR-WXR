@@ -33,15 +33,21 @@
 #define SHOGOVR_CTRL_LEFT_POSE		0x00000004	// left hand pose is valid
 
 // buttons (what each one does is decided by the game)
-#define SHOGOVR_BTN_FIRE			0x00000001	// right trigger
-#define SHOGOVR_BTN_JUMP			0x00000002	// A (right)
-#define SHOGOVR_BTN_CROUCH			0x00000004	// B (right)
+#define SHOGOVR_BTN_FIRE			0x00000001	// right trigger - shoot
+#define SHOGOVR_BTN_JUMP			0x00000002	// left grip - jump (regular); the bridge's A
+#define SHOGOVR_BTN_CROUCH			0x00000004	// left X - crouch toggle
 #define SHOGOVR_BTN_MENU			0x00000008	// left menu button
-#define SHOGOVR_BTN_LOG				0x00000010	// X (left) - mission log
-#define SHOGOVR_BTN_WEAPONS			0x00000020	// Y (left) - weapon list
-#define SHOGOVR_BTN_NEXT_WEAPON		0x00000040	// right grip
-#define SHOGOVR_BTN_ALT				0x00000080	// left trigger (spare)
-#define SHOGOVR_BTN_TRANSFORM		0x00000100	// transform the mech (vehicle mode)
+#define SHOGOVR_BTN_LOG				0x00000010	// (spare; the bridge's X)
+#define SHOGOVR_BTN_WEAPONS			0x00000020	// (spare; the bridge's Y)
+#define SHOGOVR_BTN_NEXT_WEAPON		0x00000040	// (spare in XrApi; the bridge's next weapon)
+#define SHOGOVR_BTN_ALT				0x00000080	// (spare)
+#define SHOGOVR_BTN_TRANSFORM		0x00000100	// right B - transform vehicle/mech
+#define SHOGOVR_BTN_DOUBLEJUMP		0x00000200	// right grip - double jump
+#define SHOGOVR_BTN_LEFT_TRIGGER	0x00000400	// left trigger - F9 (quick load) when dead
+#define SHOGOVR_BTN_ZOOM			0x00000800	// left Y - weapon zoom (re-select the equipped weapon)
+#define SHOGOVR_BTN_VIEWTOGGLE		0x00001000	// right A - first/third person view
+#define SHOGOVR_BTN_RECENTER		0x00002000	// right stick click - recentre the view
+#define SHOGOVR_BTN_CROUCH_HOLD		0x00004000	// left stick click - crouch (held)
 
 // viewMode
 #define SHOGOVR_VIEW_OFF		0	// stereo off - nothing to show

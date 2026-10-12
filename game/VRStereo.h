@@ -82,6 +82,13 @@ class CVRStereo
 		void	Begin2D(int nEye, DBOOL bHud = DFALSE);
 		void	End2D();
 
+		// The engine's movie player draws straight into the window buffer,
+		// centred on the whole SBS image.  Clone that finished frame into the
+		// middle of each half (both eyes) after UpdateVideo().  ResetMovieSource
+		// is called when a new movie starts so the video is re-detected.
+		void	ShiftMovieToRightHalf();
+		void	ResetMovieSource();
+
 		// Wrap the crosshair blits so they can be placed at aim depth.
 		void	BeginCrosshair()		{ m_bCrosshairPass = DTRUE; }
 		void	EndCrosshair()			{ m_bCrosshairPass = DFALSE; }
@@ -93,6 +100,16 @@ class CVRStereo
 		// Headset link (WinlatorXR XrApi, in-process UDP).  Call UpdateBridge() once per frame.
 		void	UpdateBridge();
 		DBOOL	IsBridgeConnected()		{ return m_bBridgeAlive; }
+
+		// In the headset the options/menu tree lays itself out for a small
+		// virtual screen, so the per-eye xform scales it *up* into the panel
+		// and native fonts become readable.  Fills in that size and returns
+		// DTRUE when VR is active; returns DFALSE to leave the caller's real
+		// screen size alone.
+		DBOOL	GetMenuLayoutSize(int *pW, int *pH);
+		// The shell polls this each frame; DTRUE once (after VR becomes
+		// available) means it should re-run the menu's ScreenDimsChanged().
+		DBOOL	ConsumeMenuLayoutChanged()	{ DBOOL b = m_bMenuLayoutDirty; m_bMenuLayoutDirty = DFALSE; return b; }
 		DBOOL	IsHeadTracking();
 		void	ApplyHeadTracking(DFLOAT &fYaw, DFLOAT &fPitch);	// head/hand aim, stick turning
 		void	RequestRecenter();
@@ -101,13 +118,21 @@ class CVRStereo
 		// uses this to keep the captured frame in sync).  Call once per frame,
 		// after all drawing, before the frame is presented.
 		void	DrawXrSyncPixel();
+		void	DetectMovieSource();
 
 		// Motion controllers (through the bridge)
 		DBOOL	IsControllerActive();
+		// WinlatorXR leaks the controller face buttons as the keyboard letters
+		// X/Y/B/A on top of the XrApi feed.  While the game is live and the
+		// player is alive the shell drops those keys (the VR module owns those
+		// buttons) - see CRiotClientShell::OnKeyDown/OnKeyUp.
+		DBOOL	ShouldSwallowFaceKey(int nVk);
 		DBOOL	UsesControllerAim();
 		DDWORD	GetPressed()			{ return m_nPressed; }
 		DDWORD	GetReleased()			{ return m_nReleased; }
 		void	SetGameplayInput(DBOOL b);
+		void	SetPlayerDead(DBOOL b)		{ m_bPlayerDead = b; }
+		void	SetLevelLoaded()			{ m_bAutosavePending = DTRUE; m_nAutosaveFrames = 0; }
 		void	UpdateInput();				// per-frame: controller -> game commands / menu keys
 		DBOOL	GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight);	// left stick (DFALSE if centred)
 		int		PollWeaponCycle();			// right stick up/down: +1 next, -1 previous
@@ -129,9 +154,8 @@ class CVRStereo
 		void	CheckSettingsFile();
 		const char* GetIniPath()		{ return m_szIniPath; }
 
-		// In a mech the crouch button transforms on a tap and crouches when
-		// held.  Transforming is server-side and only reacts to a real key
-		// press, so the key bound to it gets pressed for you.
+		// In a mech the crouch button transforms... (transform is now the left
+		// stick click; this just records the mech/vehicle mode for the HUD).
 		void	SetMechMode(DBOOL bMech, DBOOL bVehicle);
 		DBOOL	GameHasFocus();
 		void	HideAimHelpers();
@@ -208,7 +232,6 @@ class CVRStereo
 		DBOOL	FindCommandKey(int nCommand, DDWORD &nScan, DBOOL &bExtended);
 		void	StartBridgeIfNeeded();
 		void	RememberCommandLine();
-		void	UpdateMechCrouch();
 		void	ReleaseTransformKey();
 		void	InjectScanTap(DDWORD nScan, DBOOL bExtended);
 		void	InjectCommandTap(int nCommand);
@@ -245,6 +268,9 @@ class CVRStereo
 		DRESULT	(*m_pfnScaleSurfaceToSurfaceTransparent)(HSURFACE, HSURFACE, DRect*, DRect*, HDECOLOR);
 		DRESULT	(*m_pfnScaleSurfaceToSurfaceSolidColor)(HSURFACE, HSURFACE, DRect*, DRect*, HDECOLOR, HDECOLOR);
 		DRESULT	(*m_pfnFillRect)(HSURFACE, DRect*, HDECOLOR);
+		HSURFACE	m_hMovieSurface;
+		DRect		m_rcMovieSrc;
+		DBOOL		m_bMovieSrcKnown;
 		void	(*m_pfnDrawStringToSurface)(HSURFACE, HDEFONT, HSTRING, DRect*, HDECOLOR, HDECOLOR);
 		float	(*m_pfnGetFrameTime)();
 		void	(*m_pfnGetSurfaceDims)(HSURFACE, DDWORD*, DDWORD*);
@@ -258,6 +284,7 @@ class CVRStereo
 		HSURFACE	m_hScreen;
 		VRXform		m_xfHud;
 		DBOOL		m_bVirtualHud;		// this 2D pass lays the HUD out on a smaller virtual screen
+		DBOOL		m_bVirtual2D;		// this 2D pass lays 2D out on a virtual screen (HUD or menu)
 		DBOOL		m_bSkipNonCross;	// this pass draws only the crosshair (HUD strip, second eye)
 		DBOOL		m_bFlatFrame;		// this frame is flat (menus etc. on a floating screen)
 		DBOOL		m_bHudStripAllowed;
@@ -266,6 +293,7 @@ class CVRStereo
 		long		m_nHudX, m_nHudY, m_nHudW, m_nHudH;
 		int			m_nHudScale;
 		DFLOAT		m_fHudVirtW, m_fHudVirtH;
+		DFLOAT		m_fMenuVirtW, m_fMenuVirtH;	// size menus are laid out for (smaller = bigger text)
 		DFLOAT		m_fVirtW;			// size of the screen the 2D code thinks it's drawing to
 		DFLOAT		m_fVirtH;
 		VRXform		m_xfCross;
@@ -289,6 +317,7 @@ class CVRStereo
 		void*			m_hMapping;
 		ShogoVRShared*	m_pShared;
 		DBOOL		m_bBridgeAlive;
+		DBOOL		m_bMenuLayoutDirty;	// VR menu size became available: menus need re-laying out
 		long		m_nLastBridgeBeat;
 		DFLOAT		m_fLastBridgeBeatTime;
 		long		m_nBridgeFlags;
@@ -340,10 +369,15 @@ class CVRStereo
 		DBOOL		m_bGameplayInput;	// controller buttons act as game commands (not menu keys)
 		DDWORD		m_nSuppressed;		// buttons held when gameplay resumed - ignored until released
 		DBOOL		m_bAimByHand;		// this frame's aim comes from the right hand
+		DBOOL		m_bPlayerDead;		// the player is dead (left trigger quick-loads)
+		DBOOL		m_bCrouchOn;		// crouch toggle state (X button)
+		DBOOL		m_bAutosavePending;	// a level just loaded - quicksave once playable (#16)
+		int			m_nAutosaveFrames;	// frames of continuous play since the level loaded
 		DBOOL		m_bHaveBody;
 		DFLOAT		m_fLastOutYaw;
 		DBOOL		m_bSnapLatched;
 		int			m_nWeaponLatch;
+		int			m_nWeaponId;		// the equipped weapon (RiotWeaponId), for Left-Y zoom
 		int			m_nMenuDir;
 		DFLOAT		m_fMenuRepeatTime;
 		DFLOAT		m_fWorldScaleUsed;
@@ -384,8 +418,6 @@ class CVRStereo
 		DBOOL		m_bLoggedBridge;
 		int			m_nLoggedHudStrip;
 		int			m_nLoggedCapture;		// 0 nothing yet, 1 frames seen, 2 frames handed over
-		DDWORD		m_nCrouchDownTick;		// GetTickCount() when the crouch button went down (0 = up)
-		DBOOL		m_bCrouchLong;			// held long enough to crouch
 		DBOOL		m_bTransformKeyDown;
 		DDWORD		m_nTransformUpTick;
 		DDWORD		m_nTransformScan;
@@ -415,6 +447,7 @@ class CVRStereo
 		VarTrack	m_vtHudWidth;		// VRHudWidth       headset: width of the HUD in degrees
 		VarTrack	m_vtHudLayout;		// VRHudLayout      headset: screen width the HUD is laid out for (smaller = bigger HUD)
 		VarTrack	m_vtMenuWidth;		// VRMenuWidth      headset: width of menus/floating screen in degrees
+		VarTrack	m_vtMenuLayout;		// VRMenuLayout     headset: screen width menus are laid out for (smaller = bigger text)
 		VarTrack	m_vtHudStrip;		// VRHudStrip       -1 auto, 1 always, 0 never: HUD as its own sharp panel
 		VarTrack	m_vtHudPixels;		// VRHudPixels      whole-number size of the HUD in its strip (1 = original pixels)
 		VarTrack	m_vtHudSnap;		// VRHudSnap        1 = whole-number HUD scaling when drawn in the eyes
@@ -436,6 +469,7 @@ class CVRStereo
 		VarTrack	m_vtGunZ;
 		VarTrack	m_vtAimMarker;		// VRAimMarker      0 = no aim helper (older setting)
 		VarTrack	m_vtAimStyle;		// VRAimStyle       0 laser + dot, 1 dot, 2 reticle, 3 none
+		VarTrack	m_vtGameCrosshair;	// VRGameCrosshair  1 = draw the game's own crosshair (default off)
 		VarTrack	m_vtAimDotSize;		// VRAimDotSize     size of the aim dot
 		VarTrack	m_vtGunScale;		// VRGunScale       size of the gun/arms in your hand, on foot
 		VarTrack	m_vtGunScaleMCA;	// VRGunScaleMCA    same, in an MCA

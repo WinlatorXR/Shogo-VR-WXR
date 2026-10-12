@@ -2,16 +2,19 @@
 
 **Goal:** mount the `g_VRStereo` (`CVRStereo`) module into the client-shell
 lifecycle, expose a `VRRecenter` console command, feed head tracking / aim /
-mech state / player body into the VR module, and make `RenderCamera` stereo-aware
-while stamping the WinlatorXR frame-sync pixel.
+mech state / player body into the VR module, make `RenderCamera`, the
+pause/menu screens and the splash stereo-aware, clone the intro movies per eye,
+drop WinlatorXR's leaked face-button keys, and stamp the WinlatorXR frame-sync
+pixel.
 
-All edits are additions except the `RenderCamera` change and the
-`UpdateMenuState`/`UpdatePausedState` change. Code blocks show only the mod's own
+All edits are additions except the `RenderCamera` change, the
+`UpdateMenuState`/`UpdatePausedState` change, and the `ShowSplash` /
+`PlayIntroMovies` changes. Code blocks show only the mod's own
 added lines; the control-flow changes are described in prose so no original
 source is reproduced.
 
 Line numbers below refer to the pristine `shogosrc/ClientShellDLL/RiotClientShell.cpp`
-(~9700 lines); your copy may differ by a few lines.
+(~9990 lines); your copy may differ by a few lines.
 
 | Edit | Anchor in pristine file |
 |------|-------------------------|
@@ -28,6 +31,11 @@ Line numbers below refer to the pristine `shogosrc/ClientShellDLL/RiotClientShel
 | 11. `UpdateServerPlayerModel`| line 8011 |
 | 12. `RenderCamera`          | line 8043 |
 | 13. `UpdateMenuState` / `UpdatePausedState` | lines 2395 / 2500 |
+| 14. `ShowSplash`            | line 747 |
+| 15. `PlayIntroMovies` / `UpdateMoviesState` | lines 6379 / 2292 (plus the constructor member init) |
+| 16. `OnKeyDown`             | line 4565 |
+| 17. `OnKeyUp`               | line 4900 |
+| 18. `UpdateLoadingLevelState`| line 2515 |
 
 ---
 
@@ -129,12 +137,15 @@ g_VRStereo.CheckSettingsFile();
 g_VRStereo.UpdateBridge();
 g_VRStereo.CheckRenderer(DTRUE);
 g_VRStereo.SetGameplayInput(m_nGameState == GS_PLAYING);
+g_VRStereo.SetPlayerDead(IsPlayerDead());
 g_VRStereo.UpdateInput();
 ```
 
-The last two lines let the VR module know whether we are actually playing (so it
-takes over gameplay input) and give it one chance per frame to turn controller
-edges into game commands / menu keys. See `Docs/BUGS_TO_FIX.md` #3.
+The middle three lines let the VR module know whether we are actually playing (so
+it takes over gameplay input), whether the player is dead (so the left trigger
+quick-loads the quicksave - see `Docs/BUGS_TO_FIX.md` #16), and give it one chance
+per frame to turn controller edges into game commands / menu keys. See
+`Docs/BUGS_TO_FIX.md` #3.
 
 ---
 
@@ -142,14 +153,15 @@ edges into game commands / menu keys. See `Docs/BUGS_TO_FIX.md` #3.
 
 **Part of:** `CRiotClientShell::CalculateCameraRotation()` (pristine line 2956).
 
-First, at the end of the function (after the existing pitch clamp), add:
+First, at the end of the function, after the existing pitch clamp (pristine line
+~3119), add:
 
 ```cpp
 g_VRStereo.ApplyHeadTracking(m_fYaw, m_fPitch);
 ```
 
 Second, where the function feeds the joystick/axis movement into the move
-manager (`m_MoveMgr->UpdateAxisMovement(...)`, around pristine line 3020),
+manager (`m_MoveMgr->UpdateAxisMovement(...)`, pristine line ~3030),
 replace that single call so that, while the controllers are live, the left
 stick (via `GetMoveAxes`) drives movement instead of the keyboard/joystick axes:
 
@@ -299,3 +311,158 @@ around calls you already have. The only mod lines are the `BeginFrame` /
 `IsStereoFrame` / `RenderStereo` / `Begin2D` / `End2D` / `DrawXrSyncPixel`
 calls, and the loop that brackets the existing `m_menu.Draw()` (or the
 `m_hGamePausedSurface` blit) per eye.
+
+---
+
+## 14. `CRiotClientShell::ShowSplash()` — splash on the right half in stereo
+
+**Part of:** `CRiotClientShell::ShowSplash()` (pristine line 747).
+
+The function blits `interface/splash.pcx` and flips. Two small changes are needed.
+
+First, the pristine function reuses the same width/height locals for both the screen
+and the splash bitmap: it reads the screen size, builds the full-window destination
+rectangle, then **overwrites** the same locals with the splash's own size before
+building the source rectangle. Separate the splash's dimensions into their own
+locals so the existing locals keep the screen size (our code):
+
+```cpp
+DDWORD nWidthSplash = 0, nHeightSplash = 0;
+pClientDE->GetSurfaceDims (hSplash, &nWidthSplash, &nHeightSplash);
+```
+
+Build the **source** rectangle from the splash dimensions (`nWidthSplash` /
+`nHeightSplash`) instead of the screen locals.
+
+Second, in stereo the runtime reads the single SBS window, so a full-window splash
+is seen split across the two eyes. Narrow the **destination** rectangle to the
+**right half** while `g_VRStereo.IsStereoFrame()` is true, before the blit (our
+code):
+
+```cpp
+if (g_VRStereo.IsStereoFrame())
+{
+	rcDst.left  = (int)nWidth / 2;
+	rcDst.right = (int)nWidth;
+}
+```
+
+Keep the existing clear / `Start3D` / `RenderCamera` / `StartOptimized2D` /
+`ScaleSurfaceToSurface` / `EndOptimized2D` / `End3D` / `FlipScreen` sequence
+otherwise unchanged.
+
+---
+
+## 15. `CRiotClientShell::PlayIntroMovies()` / `UpdateMoviesState()` — movies cloned per eye
+
+**Part of:** `CRiotClientShell::PlayIntroMovies(...)` (pristine line 6379),
+`CRiotClientShell::UpdateMoviesState()` (pristine line 2292), and the
+constructor's member initialisation list (pristine line ~303).
+
+The engine's Smacker player lives in `Client.exe` and decodes straight into the
+window buffer (at native size, or fullscreen), centered; the mod cannot
+re-project the decode from `CShell.dll`. It therefore clones the finished frame
+into both eye halves. A new `CRiotClientShell` member `m_bMovieShiftRight`
+tracks whether a VR-shifted movie is playing (its declaration is a separate edit
+in `RiotClientShell.h`, see that note).
+
+**Constructor member init** (our code, beside the other `DBOOL` member
+initialisations near pristine line 303):
+
+```cpp
+m_bMovieShiftRight = DFALSE;
+```
+
+**In `PlayIntroMovies()`** — two additions:
+
+1. Near the top of the function, before it advances its static "next movie" counter,
+   reset the VR movie detector so the new movie's picture is found again on its
+   first frame (our code):
+
+```cpp
+g_VRStereo.ResetMovieSource();
+```
+
+2. Where the function sets the movie-playback flags to `PLAYBACK_FULLSCREEN`,
+   replace that value so VR starts the movie at native size, remember whether the
+   shift is active, and log it (our code):
+
+```cpp
+m_bMovieShiftRight = g_VRStereo.IsActive();
+DDWORD nFlags = m_bMovieShiftRight ? 0 : PLAYBACK_FULLSCREEN;
+g_VRStereo.Log("PlayIntroMovies: VR=%d flags=%d", (int)(m_bMovieShiftRight ? 1 : 0), (int)nFlags);
+```
+
+`nFlags` replaces the fullscreen flag already passed to the movie-play call: `0`
+in VR, `PLAYBACK_FULLSCREEN` otherwise.
+
+**In `UpdateMoviesState()`** — after the engine's per-frame `UpdateVideo()` while
+a movie is playing, add (our code):
+
+```cpp
+if (m_bMovieShiftRight) g_VRStereo.ShiftMovieToRightHalf();
+```
+
+`ShiftMovieToRightHalf()` (in `game/VRStereo.cpp`) captures the window after
+`UpdateVideo()`, auto-detects the video rectangle, blanks the whole window to
+engine-black (`SetupColor1(0,0,0,DFALSE)` + `FillRect`), and re-blits the video
+into the middle of each half, so each eye sees one clean native-size copy. See
+`Docs/BUGS_TO_FIX.md` #10.
+
+---
+
+## 16. `CRiotClientShell::OnKeyDown(int key, int rep)` — drop the leaked face-button keys
+
+**Part of:** `CRiotClientShell::OnKeyDown(int key, int rep)` (pristine line
+4565), immediately after the client-DE null check at the top of the function.
+
+WinlatorXR passes the Quest face buttons through as the keyboard letters
+X/Y/B/A on top of the XrApi feed, so the game acts on those keys. The VR module
+now decides when to drop them; the engine should then cancel the key before it
+becomes a command (the same trick the `GS_BUMPER` branch already uses with
+`ClearInput()`). Add (our code):
+
+```cpp
+if (g_VRStereo.ShouldSwallowFaceKey(key))
+{
+	pClientDE->ClearInput();
+	return;
+}
+```
+
+`ShouldSwallowFaceKey` is true only while a controller is live, gameplay input
+is active and the player is alive, for `VK` `A`/`B`/`X`/`Y`. See
+`Docs/BUGS_TO_FIX.md` #17.
+
+---
+
+## 17. `CRiotClientShell::OnKeyUp(int key)` — drop the matching key-up
+
+**Part of:** `CRiotClientShell::OnKeyUp(int key)` (pristine line 4900),
+immediately after the client-DE null check at the top of the function.
+
+Swallow the matching key-up so the engine never sees a release for a key it was
+never allowed to press. Add (our code):
+
+```cpp
+if (g_VRStereo.ShouldSwallowFaceKey(key)) return;
+```
+
+---
+
+## 18. `CRiotClientShell::UpdateLoadingLevelState()` — tell the mod a level is playable
+
+**Part of:** `CRiotClientShell::UpdateLoadingLevelState()` (pristine line 2515),
+in the block that flips to the playing state once the world and player object
+exist.
+
+When the level has finished loading and the game becomes playable, tell the VR
+module so it can quicksave once the opening cutscene is over (the left trigger
+then quick-loads it on death). Add (our code):
+
+```cpp
+g_VRStereo.SetLevelLoaded();
+```
+
+See `Docs/BUGS_TO_FIX.md` #16.
+

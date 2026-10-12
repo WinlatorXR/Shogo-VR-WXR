@@ -35,7 +35,7 @@ include on line 20):
 (pristine function starts line 238).
 
 At the point where the function currently commits the final weapon position — the
-`SetObjectPos(m_hObject, &vNewPos)` call at pristine line 353 — replace that
+position-setting `SetObjectPos` call at pristine line 353 — replace that
 single position-setting call with a VR pose/scale adjustment followed by a call
 that sets **both** position and rotation (so the VR-applied rotation is not
 discarded). Do not confuse it with the earlier `SetObjectPosAndRotation` at line

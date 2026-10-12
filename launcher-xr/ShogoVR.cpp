@@ -61,6 +61,18 @@ std::wstring BuildArgs(const std::wstring& dir)
 	for (auto& p : packs) addRez(p);
 
 	args += L" +multiplayer 0";
+
+	// The engine's default render mode is 640x480 unless told otherwise; the
+	// ScreenWidth/ScreenHeight console variables seed it before the renderer
+	// starts.  Use the desktop resolution so the window fills the display.
+	int nScreenW = GetSystemMetrics(SM_CXSCREEN);
+	int nScreenH = GetSystemMetrics(SM_CYSCREEN);
+	if (nScreenW > 0 && nScreenH > 0)
+	{
+		args += L" +screenwidth " + std::to_wstring(nScreenW);
+		args += L" +screenheight " + std::to_wstring(nScreenH);
+	}
+
 	addRez(L"ShogoVR");
 	return args;
 }

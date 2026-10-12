@@ -14,8 +14,7 @@ Line numbers below refer to the pristine `shogosrc/ClientShellDLL/OptionsMenu.h`
 | 1. Include             | after line 9 (`#include "JoystickMenu.h"`) |
 | 2. `LoadAllSurfaces`   | lines 18–20 |
 | 3. `UnloadAllSurfaces` | lines 21–23 |
-| 4. `OnEnterWorld`      | lines 26–33 |
-| 4. `OnExitWorld`       | lines 35–42 |
+| 4. `OnEnterWorld` / `OnExitWorld` | lines 26–33 / 35–42 |
 | 5. Member declaration  | after line 54 (`CJoystickMenu m_JoystickMenu;`) |
 
 ---

@@ -412,12 +412,11 @@ DBOOL CXrApiUDP::Parse(const char* szData)
 
 	m_bHaveRaw = DTRUE;
 
-	// Recentre on the first packet, on demand, or when the left stick is clicked.
-	DBOOL bClick = ((int)strlen(m_szBools) > 2 && m_szBools[2] == 'T') ? DTRUE : DFALSE;
-	if (!m_bHaveCenter || m_bRecenterPending || (bClick && !m_bPrevStickClick))
+	// Recentre on the first packet or on demand (the mod's recentre button
+	// calls RequestRecenter when the right stick is clicked).
+	if (!m_bHaveCenter || m_bRecenterPending)
 		Recenter();
 	m_bRecenterPending = DFALSE;
-	m_bPrevStickClick  = bClick;
 
 	return DTRUE;
 }
@@ -427,14 +426,17 @@ DDWORD CXrApiUDP::ButtonBits()
 	int n = (int)strlen(m_szBools);
 	#define XB(i)  (((i) < n && m_szBools[(i)] == 'T') ? 1 : 0)
 	DDWORD b = 0;
-	if (XB(18))			b |= SHOGOVR_BTN_FIRE;			// right trigger
-	if (XB(12))			b |= SHOGOVR_BTN_NEXT_WEAPON;	// right grip
-	if (XB(10))			b |= SHOGOVR_BTN_JUMP;			// A
-	if (XB(11))			b |= SHOGOVR_BTN_CROUCH;		// B
-	if (XB(0) || XB(9))	b |= SHOGOVR_BTN_WEAPONS;		// left grip / Y
-	if (XB(8))			b |= SHOGOVR_BTN_LOG;			// X
+	if (XB(18))			b |= SHOGOVR_BTN_FIRE;			// right trigger - shoot
+	if (XB(12))			b |= SHOGOVR_BTN_DOUBLEJUMP;	// right grip - double jump
+	if (XB(0))			b |= SHOGOVR_BTN_JUMP;			// left grip - jump (regular)
+	if (XB(10))			b |= SHOGOVR_BTN_VIEWTOGGLE;	// A - first/third person view
+	if (XB(11))			b |= SHOGOVR_BTN_TRANSFORM;		// B - transform vehicle/mech
+	if (XB(9))			b |= SHOGOVR_BTN_ZOOM;			// Y - weapon zoom
+	if (XB(8))			b |= SHOGOVR_BTN_CROUCH;		// X - crouch toggle
+	if (XB(2))			b |= SHOGOVR_BTN_CROUCH_HOLD;	// left stick click - crouch (held)
+	if (XB(7))			b |= SHOGOVR_BTN_LEFT_TRIGGER;	// left trigger - F9 (quick load) when dead
 	if (XB(1))			b |= SHOGOVR_BTN_MENU;			// left menu
-	if (XB(13))			b |= SHOGOVR_BTN_TRANSFORM;		// right stick click
+	if (XB(13))			b |= SHOGOVR_BTN_RECENTER;		// right stick click - recentre
 	#undef XB
 	return b;
 }
