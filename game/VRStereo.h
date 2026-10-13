@@ -110,6 +110,15 @@ class CVRStereo
 		// The shell polls this each frame; DTRUE once (after VR becomes
 		// available) means it should re-run the menu's ScreenDimsChanged().
 		DBOOL	ConsumeMenuLayoutChanged()	{ DBOOL b = m_bMenuLayoutDirty; m_bMenuLayoutDirty = DFALSE; return b; }
+
+		// Screen flash (#28): the game's hurt/explosion flash normally goes
+		// through the engine camera light-add, which renders as a broken
+		// full-screen quad under the stereo layout, so while VR is active the
+		// shell feeds the current tint here instead (once per frame while a
+		// tint is active; ClearScreenFlash() when it ends) and the mod draws a
+		// per-eye edge vignette.  Colour channels are 0..1.
+		void	SetScreenFlash(DFLOAT r, DFLOAT g, DFLOAT b);
+		void	ClearScreenFlash();
 		DBOOL	IsHeadTracking();
 		void	ApplyHeadTracking(DFLOAT &fYaw, DFLOAT &fPitch);	// head/hand aim, stick turning
 		void	RequestRecenter();
@@ -173,6 +182,7 @@ class CVRStereo
 		// Your own body (a client-side copy of your player model, animated
 		// from how you actually move; head - and optionally arms - hidden).
 		void	UpdateBody(HLOCALOBJ hPlayerObj, int nModelId, DBOOL bShow, DBOOL bCrouching);
+		DBOOL	IsCrouchOn();		// crouch toggle/hold state, for the visible body (#20)
 		void	HideBody();
 		void	PrintBodyInfo(HLOCALOBJ hWeaponModel);
 		DBOOL	IsTwoHanded()			{ return m_bTwoHanded; }
@@ -215,6 +225,7 @@ class CVRStereo
 		void	RemoveHooks();
 		DBOOL	SkipThisDraw();
 		void	ComputeLayout();
+		void	DrawScreenFlash(int nEye);
 
 		// Headset link helpers
 		void	OpenShared();
@@ -280,6 +291,8 @@ class CVRStereo
 		DBOOL		m_bHooked;
 		DBOOL		m_bCrosshairPass;
 		DBOOL		m_bLastImmersive;	// was the last 3D render this frame immersive?
+		DBOOL		m_bFlash;			// a screen tint is active this frame (#28)
+		DFLOAT		m_fFlashR, m_fFlashG, m_fFlashB;	// current tint colour, 0..1
 		int			m_nCurEye;
 		HSURFACE	m_hScreen;
 		VRXform		m_xfHud;
@@ -377,7 +390,6 @@ class CVRStereo
 		DFLOAT		m_fLastOutYaw;
 		DBOOL		m_bSnapLatched;
 		int			m_nWeaponLatch;
-		int			m_nWeaponId;		// the equipped weapon (RiotWeaponId), for Left-Y zoom
 		int			m_nMenuDir;
 		DFLOAT		m_fMenuRepeatTime;
 		DFLOAT		m_fWorldScaleUsed;
@@ -477,7 +489,7 @@ class CVRStereo
 		VarTrack	m_vtVRFullscreen;	// VRFullscreen     1 = drop the title bar and fill the display
 		VarTrack	m_vtMoveDir;		// VRMoveDir        walk towards: 0 gun hand, 1 head, 2 other hand
 		VarTrack	m_vtTwoHand;		// VRTwoHand        1 = support the gun with your other hand to aim it
-		VarTrack	m_vtHandFlip;		// VRHandFlip       0 = flip hand/weapon 180 about roll (default), 1 = as reported
+		VarTrack	m_vtHandFlip;		// VRHandFlip       0 = off (default; roll corrected for a Quest 3), 1 = as reported
 		VarTrack	m_vtBody;			// VRBody           1 = show your body
 		VarTrack	m_vtBodyArms;		// VRBodyArms       1 = show the body's arms too (they can't follow your hands)
 		VarTrack	m_vtBodyOffset;		// VRBodyOffset     metres the body sits behind your eyes

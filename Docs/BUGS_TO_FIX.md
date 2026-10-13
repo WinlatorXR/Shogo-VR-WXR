@@ -4,7 +4,56 @@ Live issue log for the Shogo-VR-WXR port (XrApi 0.4, in-process UDP client in `C
 Context: Meta Quest 3 via WinlatorXR, side-by-side stereo, on-device session initiated from
 `ShogoVR.exe` (launcher-xr). On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`.
 
-Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
+Legend: `Open` / `In progress` / `Fixed in code` (awaiting a device pass) / `Fixed` (verified) /
+`Won't fix`.
+
+## Status at a glance
+
+Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #16, #17** and
+**#20** (the crouch *body animation* only - the camera half is still open). #4 and #9 were
+verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed:** #7
+(supersampling not pursued), #18 (zoom re-select) and #19 (weapon zoom - the scope-cursor
+overlay failed on device, so the zoom half is dropped and only the pin-FOV guard is kept).
+
+| #  | Issue | Status |
+|----|-------|--------|
+| 1  | Head roll reversed | Fixed - verified |
+| 2  | Hands upside down (`VRHandFlip`) | Fixed - verified |
+| 3  | Controller input not used | Fixed - verified (left stick: #11) |
+| 4  | Right trigger doesn't fire | Fixed - verified (tester) |
+| 5  | Menu text too small | Fixed - verified (2026-10-13) |
+| 6  | Menu not centred | Fixed - verified |
+| 7  | Supersample 2x | Removed (not pursued) |
+| 8  | Hands upside down by default | Fixed - verified |
+| 9  | Game runs on when headset stalls | Fixed - verified (tester) |
+| 10 | Intro logo/movie mono | Fixed - verified (intro offset: #26) |
+| 11 | Motion-controller movement | Fixed - verified |
+| 12 | Loading screen mono | Open (confirmed; fix like #5) |
+| 13 | Render resolution 640x480 | Fixed - verified |
+| 14 | Crosshair on by default | Fixed - verified |
+| 15 | Controller mapping | Fixed - verified (pending #22/#23/#31/#32) |
+| 16 | Can't respawn when dead | Fixed - verified |
+| 17 | Face buttons leak X/Y/B/A | Fixed - verified (A/B leak: #31) |
+| 18 | Weapon zoom re-select | Removed - superseded by #19 |
+| 19 | Zoom shrinks view (blocker) | Won't fix for now - removing zoom (2026-10-13) |
+| 20 | Crouch doesn't lower the VR camera | In progress (body crouch works; camera not lowered) |
+| 21 | Body shown in 3rd-person / cutscenes | Open (confirmed on device) |
+| 22 | Left-stick deadzone | Open (still not applied on device) |
+| 23 | Right A/B intermittent/swapped | Open |
+| 24 | On-foot autosave | Open |
+| 25 | Autosave re-arms after load | Open |
+| 26 | Intro video too high | Open |
+| 27 | Shots vs weapon model | Open |
+| 28 | Hurt/explosion flash not visible | Reopened (not visible on device) |
+| 29 | Muzzle flash centred on the view | Open |
+| 30 | Trim the in-game VR menu | Open |
+| 31 | Right B toggle + A/B keystrokes leak | Open |
+| 32 | Jump intermittently stops working | Open |
+| 33 | Area load doesn't re-trigger autosave | Open |
+| 34 | Weapon model lower than shot origin | Open |
+
+Nothing is awaiting a first headset pass right now; the remaining rows in the table are the
+open / in-progress work, and each item's own entry says what to check.
 
 ---
 
@@ -24,9 +73,8 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 - **Fix applied:** dropped the Z-negation in `XrQuatToOpenXR()` (now an identity pass). Because
   the negation had Z=0 on yaw/pitch quaternions, yaw and pitch are numerically unchanged; roll
   is the only affected axis and its sign now matches the headset.
-- **Still to verify:** on device, lean left/right and confirm the world rolls the correct way,
-  and that yaw/pitch feel unchanged. Watch for any subtle roll-vs-yaw coupling at combined
-  orientations.
+- **Verified on device (2026-10-13):** lean left/right rolls the correct way; yaw/pitch unchanged,
+  with no noticeable roll-vs-yaw coupling.
 
 ---
 
@@ -50,9 +98,8 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
   hand's forward axis (barrel), leaving the aim direction untouched. Exposed in the in-game
   VR settings page (`game/VRMenu.cpp`) as "flip hand roll (180)". Bumped `VRMENU_ITEMS` (and
   `MAX_GENERIC_ITEMS` in ShogoSource `BaseMenu.h`) to 27 to fit the new row.
-- **Still to verify:** on device, toggle `VRHandFlip` and confirm the held gun/hands rotate
-  180 degrees about the barrel without changing where the gun points; confirm it still works
-  together with the #1 roll fix on this headset.
+- **Verified on device (2026-10-13):** the flip rotates the hands 180 deg about the barrel without
+  changing where the gun points, and works with the #1 roll fix.
 
 ---
 
@@ -105,9 +152,9 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 - **Note:** The menu/pause flow (`UpdateMenuState`/`UpdatePausedState`) must keep working with
   controller-only input, including on the per-eye menu fix in #5/#6 (`UpdateInput()` handles it
   with injected menu keys).
-- **Still to verify:** on device - no keyboard/mouse leakage in gameplay, left stick moves
-  (analog) and right stick turns, fire/jump/crouch work, weapon switch works, Esc opens the
-  menu and the sticks/buttons navigate it, then close it and confirm no stuck/stray inputs.
+- **Verified on device (2026-10-13):** no keyboard/mouse leakage in gameplay; left stick moves
+  (analog) and right stick turns; fire/jump/crouch work; weapon switch works; Esc opens the menu
+  and the sticks/buttons navigate it with no stuck/stray inputs.
 
 ---
 
@@ -143,8 +190,30 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 
 ## 5. Menu text is too small / unreadable at 2800x1400
 
-- **Status:** Open (expanded 2026-10-11)
+- **Status:** Fixed - **verified on device (2026-10-13): menu text is readable in VR.**
+- **Device result (2026-10-13):** confirmed working - "The menu fix is great, readable text now in
+  VR." No further work needed. (See #30: the VR page is now being trimmed to a short list.)
 - **Priority:** Medium (readability/comfort)
+- **Code state (2026-10-12): finished.** The virtual-layout members/VarTrack are in
+  (`game/VRStereo.h/.cpp`: `m_vtMenuLayout` / `VRMenuLayout` default 640, `m_fMenuVirtW/H`,
+  `m_bVirtual2D`, `m_bMenuLayoutDirty`, `GetMenuLayoutSize()` declared, `ConsumeMenuLayoutChanged()`
+  inline). Completed this session:
+  - `game/VRStereo.cpp`: `ComputeLayout()` now sets `m_bMenuLayoutDirty` when the menu virtual size
+    changes; `UpdateBridge()` sets it on the bridge-alive transition (VR menu size becomes active);
+    `GetMenuLayoutSize()` **is implemented** (fills the menu virtual size and returns DTRUE only
+    while VR is active and the headset is bridged, else DFALSE); `End2D()` now clears
+    `m_bVirtual2D`; `Hook_GetSurfaceDims` now substitutes the virtual size when `m_bVirtual2D` is
+    set - so it works for the HUD pass *and* the non-HUD menu pass.
+  - `ShogoSource` (prose notes in `ShogoSourceModifications/`): `CRiotMenu::ScreenDimsChanged()`
+    now asks `g_VRStereo.GetMenuLayoutSize()` and falls back to the real screen size
+    (`RiotMenu.cpp`, new prose note); `CRiotClientShell` polls
+    `g_VRStereo.ConsumeMenuLayoutChanged()` right after `UpdateBridge()` and re-runs
+    `m_menu.ScreenDimsChanged()` when set (`RiotClientShell.cpp`, note edit 7).
+  Menus now lay out on a 640x480 virtual canvas and the existing per-eye xform scales them *up*
+  into the headset panel - the same trick that fixed the HUD (#6 confirmed fixed on device).
+- **Still to verify (device):** every Options/pause page is legible at 2800x1400; no page draws
+  ~4x too big or clipped; the default 640 reads well (else lower `VRMenuLayout` or split the VR
+  page into sub-pages - see the design notes below).
 - **Observed:** At 2800x1400 SBS, **all** menu text is somewhat small in the headset - not just
   the VR settings page, but every Options/pause menu. #6 (centring) is confirmed fixed on
   device, so what remains is purely text/panel **size**. Proposed: raise the default menu
@@ -181,9 +250,9 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
     its own (per-eye) virtual resolution so text is legible at 2800x1400 (couples with #6).
   - Keep one deep-link entry ("VR ...") that opens the first sub-page and standard
     back/forward nav driven by the controller (#3) rather than keyboard.
-- **Next steps:** sketch the 3 groups with their VarTracks, then implement in ShogoSource +
-  `VRMenu.cpp`, document the ShogoSource diffs, build, deploy, smoke test on PC (menus per eye)
-  then on device.
+- **Remaining work (optional, after device check):** if 640 is still too small, lower
+  `VRMenuLayout` and/or split the VR page into the 3 sub-pages sketched above; both are mod-side
+  / menu-source changes only.
 
 ---
 
@@ -222,30 +291,10 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 
 ## 7. Supersample: render at 2x the window resolution
 
-- **Status:** Open
-- **Priority:** Medium (quality/performance trade-off)
-- **Observed request:** default the game to render at 2x the window resolution and
-  supersample the image for the headset.
-- **Context:** The window *is* the SBS canvas (e.g. 1440x900 desktop; 2800x1400 on device with
-  1400/eye). XrApi/WinlatorXR samples that canvas as the source for both eyes, so raising the
-  game's internal render resolution directly upsamples the texture the headset reads.
-- **Refs:**
-  - `game/VRStereo.cpp:1448` — startup log `"VR: game resolution %dx%d, drawing at %dx%d,
-    window %dx%d"` (render size currently equals the window/mode size).
-  - `game/VRStereo.cpp:2094-2109` — `CheckRenderer()` assumes drawing resolution equals window
-    resolution (any mismatch is treated as a broken renderer state).
-  - `FitVRWindow()` (borderless full-screen) and `DrawXrSyncPixel()` — window/resolution
-    plumbing.
-- **Proposed direction:**
-  1. Add a `VRSupersample` choice (1x / 2x, default 1x; expose in the VR menu, ties to #5).
-  2. When >1x and the headset is live, set the game's internal render resolution to
-     `windowW * factor` x `windowH * factor` (via the same `SetMode`/renderer path the game
-     uses) and let the runtime downscale the SBS canvas.
-  3. `CheckRenderer()` and the resolution bookkeeping (`m_nRenderW/H`, `m_nSurfW/H`) must
-     treat the supersampled size as the expected render size; re-centre per-eye windows to
-     the halves of the larger canvas (#6 relevant).
-  4. Verify on device: measure visual sharpness vs. frame rate; make sure menus/HUD stay
-     legible and DoF shadows etc. don't break.
+- **Status:** Removed (2026-10-13) - supersampling is not being pursued.
+- **Context:** the game already renders at the display resolution (#13, verified), and that SBS
+  canvas is what WinlatorXR samples for both eyes; raising it further was judged not worth the
+  sharpness/performance trade-off. Dropped from the tracker.
 
 ---
 
@@ -268,10 +317,8 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
   upside-down hands correct with no config (and keeps existing `VRHandFlip 0` inifiles
   working). The menu row at `game/VRMenu.cpp:54` is now a choice: "flipped" (0) / "as
   reported" (1), so the on-screen wording matches the new default rather than reading "off".
-- **Still to verify:** default pose (no config) shows right-side-up hands; toggling to "as
-  reported" flips them back; the gun still points where the hand points (roll-only, not a
-  mirrored aim). If the aim is also wrong the hand *basis* needs fixing (see background
-  below), not this flag.
+- **Verified on device (2026-10-13):** the default pose shows right-side-up hands; the gun still
+  points where the hand points (roll-only, not a mirrored aim).
 - **Background (why this is a roll fix, not a basis fix):**
   1. The default was simply wrong for this headset, so inverting the flag makes hands
      right-side-up out of the box while keeping the row for the other way.
@@ -305,10 +352,9 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
     result so a socket error bails instead of spinning.
   - `game/VRStereo.cpp:291` - `VRSyncHold` now defaults to **1 (on)**.
   - Ref drops the "bounded" wording (`game/XrApiUDP.h`, `game/VRStereo.h`).
-- **Still to verify:** on device - take the headset off / background the runtime and confirm
-  the game holds its last frame with no further simulation, then resumes when tracking returns.
-  Note: a true app death requires killing the sandbox (as intended); there is no in-process
-  recovery by design.
+- **Verified with the XrApi UDP tester:** stalling the feed holds the last frame with no further
+  simulation and it resumes when tracking returns. (A true app death still requires killing the
+  sandbox by design; no in-process recovery.)
 - **Superseded reasoning (kept for context):** a bounded watchdog + auto-resume was considered
   (avoids a wedged session and any compositor mutual-wait), but the owner chose the hard hang.
 
@@ -316,8 +362,8 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 
 ## 10. Intro logo and movie play in a single frame instead of stereo
 
-- **Status:** Fixed in code (2026-10-11) - **movies confirmed on device (user: "basically
-  fixed"); splash still to verify**
+- **Status:** Fixed - **verified on device (2026-10-13)** (splash and movies both render in
+  stereo; the remaining intro-video vertical offset is #26).
 - **Priority:** Medium (first impression; also proves the SBS path for 2D content)
 - **Observed:** The intro logo (`ShowSplash`) and the intro movies (`Logo.smk`, `Intro.smk`)
   were drawn full-window on the SBS canvas, so the runtime saw one image split across the eyes.
@@ -346,15 +392,14 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
   reach the Smacker player (it draws in `Client.exe`); a whole-window black surface filled
   with `SetPixel` hung the game (reverted); `ClearScreen` and `FillRect(0)` don't paint on
   this driver - real engine black is `SetupColor1(0,0,0,DFALSE)`.
-- **Still to verify:** on device at 2800x1400 - splash centered (or accepted right-side),
-  clean black background behind both movie copies, no hang/regression in the movie->menu
-  transition.
+- **Verified on device (2026-10-13):** splash and movies both render cleanly in stereo with no
+  split or stale background; the only remaining intro issue is the vertical offset in #26.
 
 ---
 
 ## 11. Motion-controller movement doesn't actually move the player
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
+- **Status:** Fixed - **verified on device (2026-10-13)**.
 - **Priority:** High (this is the other half of #3 - the stick should walk you around)
 - **Observed:** Reported today with #3's on-device testing: the left stick pushes the analog
   axes through but the player never moves. This is what #3's "movement wired" step was
@@ -402,19 +447,20 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
   axes from `GetMoveAxes()` (dead-zoned + aim-rotated). `COMMAND_ID_LEFT/RIGHT` are deliberately
   left unanswered so the stick strafes (turn stays on the right stick via `StickTurn()`).
   No ShogoSource change was required. Build + deploy + smoke (`mods=102`) done.
-- **Still to verify:** PC test via the XrApi UDP Tester (WASD on the left stick walks forward/
-  back/strafe, right stick turns), then on device; confirm speeds feel proportional and there is
-  no drift when the stick is centred.
+- **Verified on device (2026-10-13):** the left stick walks/strafes and the right stick turns;
+  speeds feel proportional with no drift when centred. (Left/right dead-zone drift is #22.)
 
 ---
 
-## 12. Loading screen renders mono
+## 12. Loading screen renders mono (text unreadable, split across both eyes)
 
-- **Status:** Open
+- **Status:** Open (re-confirmed on device 2026-10-13; fix to mirror #5)
 - **Priority:** Medium (same flat-2D-per-eye class as #5 / #6 / #10)
 - **Observed:** The level **loading** screen (and the bumper screen) is drawn once, centered, on
   the full SBS canvas. With SBS active the runtime reads one image, so each eye sees half of one
-  picture at the seam (mono / split) instead of a per-eye copy. Reported on device 2026-10-11.
+  picture at the seam (mono / split) instead of a per-eye copy. Reported on device 2026-10-11 and
+  **again 2026-10-13**: the loading screens are 2D, so their text is unreadable, split between
+  both eyes. The user wants "a fix here similar to the menus" (#5).
 - **Root cause:** `CRiotClientShell::UpdateLoadingLevel()` blits `m_hLoading` /
   `m_hBumperText` / `m_hLoadingWorld` straight to the screen surface centered
   (`DrawSurfaceToSurfaceTransparent(hScreen, ..., (nScreenWidth - w) / 2, (nScreenHeight - h) / 2, ...)`).
@@ -437,18 +483,21 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
      `g_VRStereo.Begin2D(nEye, DFALSE)` / `End2D()` for both eyes, like
      `UpdateMenuState`/`UpdatePausedState` do, so the loading art is centered inside each eye
      half. `UpdateLoadingLevel()` is pure 2D (no camera/3D), so it needs no `RenderStereo` or
-     polygrid - just the per-eye copy.
+     polygrid - just the per-eye copy. **Mirror #5:** lay the loading/bumper art out on a small
+     virtual canvas (like the menu's 640x480) so the per-eye xform scales the text *up* legibly,
+     and reuse/extend the #5 virtual-size plumbing (`GetMenuLayoutSize()` and the
+     `Hook_GetSurfaceDims` substitution) rather than only centring.
   2. **Right-half clone (quick):** like `ShowSplash` (#10), draw the loading art into the right
      half of the SBS window while stereo is active; the left eye then shows the cleared
      background. Less correct than per-eye but a one-place change.
-- **Still to verify:** on device at 2800x1400 - loading/bumper text centered and legible in both
-  eyes with no seam-split; no regression in the loading -> level transition.
+- **Still to verify:** on device at 2800x1400 - loading/bumper art centered **and its text legible
+  in both eyes** with no seam-split; no regression in the loading -> level transition.
 
 ---
 
 ## 13. Render resolution forced to 640x480
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
+- **Status:** Fixed - **verified on device (2026-10-13)**.
 - **Priority:** High (the game renders tiny; everything is soft/scaled)
 - **Observed:** On device the game comes up at 640x480 regardless of the display, so the stereo
   image is low-resolution and the window does not fill the screen.
@@ -460,14 +509,14 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
   `+screenwidth W +screenheight H` (from `GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN)`) to the
   `Client.exe` command line, before the `-rez ShogoVR` entry. `launcher-xr\build.cmd` now links
   `user32.lib` for `GetSystemMetrics`.
-- **Still to verify:** on device, the game starts at the display resolution (log line
-  `Resolution WxH, drawing at WxH` in `ShogoVR\ShogoVR_game.log`); no black bars / stretched image.
+- **Verified on device (2026-10-13):** the game starts at full display resolution with no black
+  bars and no stretched image.
 
 ---
 
 ## 14. Crosshair is on by default
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
+- **Status:** Fixed - **verified on device (2026-10-13)**.
 - **Priority:** Medium (clutter; the aim helper already shows where you point)
 - **Observed:** Both the game's own first-person crosshair and the mod's aim helper show by
   default.
@@ -486,14 +535,14 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 - **Side note:** while adding the menu row, the action-row index constants `VRM_RECENTER` /
   `VRM_DEFAULTS` / `VRM_BACK` in `game/VRMenu.cpp` were found to be **off by one** (they had not
   been bumped when the "aim helper" row was added). Corrected to 25 / 26 / 27.
-- **Still to verify:** on device, no crosshair on foot or in a mech by default; toggling
-  "game crosshair" on draws it at aim depth (head aim) and still hides it when aiming by hand.
+- **Verified on device (2026-10-13):** no crosshair by default on foot or in a mech.
 
 ---
 
 ## 15. Default controller mapping doesn't match the intended layout
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
+- **Status:** Fixed - **verified on device (2026-10-13)** (individual controls still pending
+  #22/#23/#31/#32).
 - **Priority:** High (core controls)
 - **Requested default mapping (revised 2026-10-11):**
   - Left stick: move
@@ -526,14 +575,15 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
     the latched toggle **or** the held `CROUCH_HOLD`; `UpdateInput` drops the previous-weapon
     button (the right stick still cycles weapons via `PollWeaponCycle`) and leaves the left
     trigger doing nothing while alive.
-- **Still to verify:** on device - each binding does what the list says, on foot and in a mech,
-  and no action fires from a button it shouldn't.  The left trigger's dead behaviour is #16.
+- **Verified on device (2026-10-13):** the revised layout matches the list. Remaining looseness is
+  tracked separately: left-stick dead-zone #22, A/B taps #23, the B transform / A/B keystroke leak
+  #31, and the intermittent jump #32.
 
 ---
 
 ## 16. Can't respawn when dead (the Enter key does nothing)
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
+- **Status:** Fixed - **verified on device (2026-10-13)**.
 - **Priority:** Medium-High (you get stuck after dying)
 - **Observed:** While dead, tapping **Enter** from the controller does nothing - the game's
   respawn / load prompt does not accept it. This is a bug in the game itself, so Enter is a
@@ -564,16 +614,15 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
     continuous gameplay input while alive (the settle window so an opening cutscene ends, and
     it resets if play stops), then disarms.  The left trigger while dead now calls
     `InjectCommandTap(COMMAND_ID_QUICKLOAD)` instead of tapping Enter.
-- **Still to verify:** on device - a level start produces one quicksave (watch for the
-  "Quicksaving" message) not repeated when merely closing a menu; dying and pressing the left
-  trigger reloads that save.  If the save lands before an opening cutscene, lengthen the 120
-  frame settle; if it never fires, confirm F6 is bound to quicksave in Options > Keyboard.
+- **Verified on device (2026-10-13):** a level start quicksaves (see the "Quicksaving" message)
+  and the left trigger reloads it after death. (Autosave gaps/edge cases moved to #24/#25/#33.)
 
 ---
 
 ## 17. Controller face buttons leak the keyboard letters X/Y/B/A into the game
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
+- **Status:** Fixed - **verified on device (2026-10-13)** (X/Y clean; the remaining A/B leak is
+  #31).
 - **Priority:** Medium (stray keystrokes trigger unintended actions while playing)
 - **Observed:** WinlatorXR passes the Quest face buttons through as the keyboard letters
   X/Y/B/A **in addition to** the XrApi feed, so the game reacts to those keys while playing.
@@ -590,47 +639,466 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
 - **Scope:** only while playing and alive. Menus and the dead state are untouched, so the
   keyboard still works there and the mod's own injected keys (Esc, the weapon keys, and the
   F6/F9 saves of #16) are unaffected.
-- **Still to verify:** on device - while alive the face buttons do nothing on their own;
-  the mod's mapped actions (fire / jump / crouch / weapon / view / etc.) still work; and
-  when dead or in a menu the keyboard still behaves as before.
+- **Device result (2026-10-13):** X/Y are clean; the remaining **A/B keystroke leak** is tracked
+  separately in #31 (block A/B everywhere except the pause menu), so #17 itself is closed.
 
 ---
 
 ## 18. Weapon zoom toggle must re-select the currently equipped weapon
 
-- **Status:** Fixed in code (2026-10-11) - **needs on-device verification**
-- **Priority:** Medium (zoom is a core weapon feature)
-- **Requirement:** the **left controller Y** button toggles zoom. Zoom is toggled by
-  *re-selecting the already-equipped weapon* (the engine flips zoom when the same weapon is
-  selected again - `CWeaponModel::HandleInternalWeaponChange`, `WeaponModel.cpp:1674`). The
-  user reports that on foot **both weapon 5 and weapon 6** zoom, while in MCA mech mode only
-  **weapon 6** does. So the button must send the weapon key matching the **currently equipped**
-  weapon, not a fixed slot.
-- **How to track the current weapon:** the shell already exposes it -
-  `CRiotClientShell::m_weaponModel.GetId()` returns the current `RiotWeaponId`, and the mod
-  already receives it every frame (`g_VRStereo.UpdateHeldGun(hWeaponModel, m_weaponModel.GetId(),
-  vPos)`, `RiotClientShell.cpp:3585`). Convert id -> weapon-slot command with
-  `GetCommandId(nWeaponId)` (`ShogoSource/Shared/WeaponDefs.h:249`) and have the mod inject
-  that command's **bound key** on Left Y. Reading `GetId()` is more reliable than remembering
-  the last weapon command, because the right stick changes weapons via
-  `ChangeToNextWeapon()`/`ChangeToPrevWeapon()` (not via the numbered commands).
-- **Engine facts to reconcile with the report:** `CanWeaponZoom()` (`Shared/WeaponDefs.h:1959`)
-  returns true only for `GUN_ASSAULTRIFLE_ID` and `GUN_SNIPERRIFLE_ID`. `GetWeaponId()` maps
-  on foot `COMMAND_ID_WEAPON_4` -> Assault Rifle and mech `COMMAND_ID_WEAPON_5` -> Sniper
-  Rifle; on foot `COMMAND_ID_WEAPON_5` = Energy Grenade and `COMMAND_ID_WEAPON_6` = Kato
-  Grenade (neither zoomable). So the user's "weapon 5 / 6" is probably the in-game weapon
-  list/labels, not `COMMAND_ID_WEAPON_n` - **confirm on device which slots are meant**, but
-  the track-and-re-select approach works either way.
-- **When the equipped weapon can't zoom:** re-selecting it is harmless -
-  `CWeaponModel::ChangeWeapon` returns right after its `CanWeaponZoom` check - so no
-  special-casing is needed.
-- **Fix applied (2026-10-11):** `game\VRStereo.cpp` now includes `WeaponDefs.h`; the mod
-  caches the equipped weapon id (`m_nWeaponId`, added to `VRStereo.h`, initialised to -1) in
-  `UpdateHeldGun` each frame.  On Left Y, `UpdateInput` maps the id with `GetCommandId()` and
-  taps that weapon-slot command (re-selecting the equipped weapon toggles its zoom); if the id
-  is unknown it does nothing.
-- **Still to verify:** on device - Left Y toggles zoom for the zoomable weapons on foot and
-  in a mech, and does nothing for the rest (confirm which in-game slots you meant by "5 / 6").
+- **Status:** Removed (2026-10-13) - superseded by #19: weapon zoom is being removed for now, so
+  the Left-Y re-select toggle is dropped. See #19 for the zoom history.
+
+---
+
+## 19. Weapon zoom shrinks the whole view to a tiny square and never restores (RELEASE BLOCKER)
+
+- **Status:** **Won't fix as designed - removing zoom (2026-10-13)** (option 1 shipped but failed
+  on device)
+- **Priority:** Blocker
+- **Device result (2026-10-13):** the pin-FOV + scope-cursor approach (option 1 below) **does not
+  work** in the headset ("the new zoom method doesn't work"). Decision: **remove zoom for now**
+  (option 3) - drop the `ZOOM` mapping and the Left-Y toggle, and remove the scope overlay. Keep
+  the pin-FOV change itself (the eye FOV is never multiplied by the zoom ratio): it is what stops
+  the tiny-square / stuck-FOV presentation bug, and with zoom no longer toggleable the camera
+  never zooms, so `m_bScoped` stays false and `DrawScopeOverlay` never draws.
+- **Observed (device, 2026-10-12):** Left Y zoom (re-select the equipped weapon, #18) is hard to
+  trigger and sometimes doesn't fire; when it does, the **entire display collapses to a small
+  square in the middle** of the view and **never restores** afterwards.
+- **Root cause (suspected):** the mod couples the eye render FOV to the game's camera FOV.
+  `RefreshFrame()` derives `fZoom = fOrigFovX / m_fLastBaseFovX` from the live camera FOV
+  (`game/VRStereo.cpp:797-799`), shrinks the eye FOV by it (`:876`, `:884`), then reports the
+  shrunken `m_fEyeFovX/Y` to WinlatorXR (`game/VRStereo.cpp:1842-1844`). Shogo's zoom slams the
+  camera FOV to 10 deg (`ShogoSource/ClientShellDLL/RiotClientShell.cpp:59` `FOV_ZOOMED`,
+  `UpdateCameraZoom` `:3288-3352`). Feeding a ~10 deg FOV at the SBS canvas makes the runtime
+  present a tiny central image; "never restores" fits a stuck zoom state (the re-select toggle is
+  unreliable) plus the retained narrow FOV. It also touches real screen presentation, which we do
+  not want.
+- **Requirement:** a zoom that does **not** change the resolution / presented FOV at all - keep the
+  eye render FOV pinned to the headset base FOV - **or remove zoom entirely**.
+- **Options:**
+  1. **Pin the FOV + scope cursor (preferred if legible):** stop deriving `fZoom` from the camera
+     FOV (drop the coupling at `:797-884`); keep `m_fEyeFovX/Y` at the base forever. Show zoom
+     feedback as a mod-drawn **scope cursor / vignette** per eye so the player knows zoom is on,
+     with no change to the world's rendered scale. (The game already has a zoom scope surface,
+     `Cross_Zoom.pcx`, `ShogoSource/ClientShellDLL/PlayerStats.cpp:496/552/632`.)
+  2. **True magnification without an FOV change:** render the eye at the narrow FOV into an
+     offscreen surface and present it magnified inside the scope overlay (a second pass per eye).
+     Most complex; only if option 1 is not enough.
+  3. **Remove zoom:** unbind Left Y (drop the `ZOOM` mapping in `ButtonBits()`
+     `game/XrApiUDP.cpp:434` and the `UpdateInput` tap) and mark won't-fix. The user's stated
+     fallback.
+- **Refs:** `game/VRStereo.cpp:790-800, 876-884, 1842-1844`;
+  `ShogoSource/ClientShellDLL/RiotClientShell.cpp:59, 3288-3352`; #18.
+- **Fix applied (2026-10-12) - option 1 (pin FOV + scope cursor):**
+  - `game/VRStereo.cpp` `RenderStereo()`: the eye FOV is no longer multiplied by the zoom ratio -
+    `fEyeFovY = ClampFov(BaseEyeFovY(m_fLastBaseFovX))` and the eye separation is left at the full
+    `fIpdWorld` (the `* fZoom` and zoom-shrunk IPD are gone). The reported frame FOV
+    (`m_fReportTanX/Y`) therefore stays at the base too, so zoom **never changes the presented
+    scale or the headset FOV**. `fZoom` is still computed (and logged) purely to detect zoom.
+  - New `m_bScoped` flag (set from `fZoom < 0.97f`) drives a **zoom cursor**:
+    `CVRStereo::DrawScopeOverlay(nEye)` lazily loads the game's own scope art
+    (`interface/OnFoot/Cross_Zoom.pcx` / `interface/Enforcer/Cross_Zoom.pcx`, colour-keyed black
+    transparent) and blits it, fit + centred, into each eye half. It is called at the end of
+    `Begin2D(nEye, bHud=TRUE)` so it draws over the world and under the HUD, once per eye. The
+    surfaces are deleted in `Term()`.
+  - Deliberate trade-off: this removes true magnification - zoom now shows the world at normal
+    scale plus a scope overlay. If real magnification is wanted later, do it as an offscreen
+    second pass (option 2) rather than by narrowing the reported FOV.
+- **Still to verify (device):** Left Y toggles the scope cursor on the zoomable weapons; the
+  picture **keeps its normal scale** when zoomed; it restores instantly when zoom is off; no tiny
+  centre image and no stuck zoom; the scope sits centred in each eye.
+
+---
+
+## 20. Crouch doesn't lower the VR camera (Left X toggle, Left stick click hold)
+
+- **Status:** In progress - the crouch **body animation** works, but the **VR camera never moves**
+  (device 2026-10-13).
+- **Priority:** Medium (dead inputs; may matter on later levels / low gaps)
+- **Observed (device, 2026-10-12):** Left X (crouch toggle) and Left stick click (crouch hold)
+  give no visible crouch.
+- **Observed (device, 2026-10-13):** crouch does **not** raise or lower the camera in VR - it only
+  animates the third-person body model (which, per #21, should not even be visible). So in VR the
+  player still gets no crouch effect at all.
+- **Root cause:** Shogo has **no on-foot crouch**. `COMMAND_ID_DUCK` only sets `BC_CFLG_DUCK`,
+  which (a) halves move accel (`CMoveMgr.cpp:725-728`) and (b) only forces a downward vertical
+  accel while **swimming / free-moving** (`CMoveMgr.cpp:835-838`). It never lowers the camera or
+  plays a stance animation. The mod's own body anim was also never told to crouch:
+  `UpdateServerPlayerModel()` called `g_VRStereo.UpdateBody(..., DTRUE, DFALSE)` with `bCrouching`
+  hard-coded `DFALSE` (`ShogoSource/ClientShellDLL/RiotClientShell.cpp:8179`), even though
+  `UpdateBody()` accepts it and the crouch anim exists (`game/VRStereo.cpp:3482`).
+- **Fix applied (2026-10-12, option 1 - body crouch only):** new `CVRStereo::IsCrouchOn()` returns
+  the same state `VRCommandOn(COMMAND_ID_DUCK)` uses (`m_bCrouchOn` toggle OR
+  `SHOGOVR_BTN_CROUCH_HOLD` held, gated on gameplay input + an active controller), and
+  `RiotClientShell.cpp` now passes it:
+  `g_VRStereo.UpdateBody(..., DTRUE, g_VRStereo.IsCrouchOn())`. So crouching now drives the VR
+  body's crouch animation (`CR` / `CWR*`). **The player camera is not lowered yet** - that is the
+  other half of option 1, still open.
+- **Device result (2026-10-13):** only the third-person body model reacts to crouch - the camera
+  stays put, so VR shows no crouch effect. (That body also shows in third-person / cutscene views
+  and is missing geometry - both tracked in #21.)
+- **Still open (the real fix):** lower the camera while crouched. Shogo has no on-foot crouch, so
+  add a mod-side eye-height offset applied while `IsCrouchOn()` is true (subtract a fixed amount
+  from the HMD world position in the eye/`RenderStereo` path), ideally eased in/out so it isn't
+  jarring.
+- **Refs:** `game/XrApiUDP.cpp:435-436`; `game/VRStereo.cpp:2131-2141`
+  (`VRCommandOn`/`COMMAND_ID_DUCK`), `game/VRStereo.h:373` (`m_bCrouchOn`);
+  `ShogoSource/ClientShellDLL/CMoveMgr.cpp:178-181, 725-728, 835-838`;
+  `RiotClientShell.cpp:8185`; `game/VRStereo.cpp:3467-3482`.
+
+---
+
+## 21. The VR body shows in third-person / cutscene views (and is missing geometry)
+
+- **Status:** Open (confirmed on device 2026-10-13)
+- **Priority:** Medium (visual; third-person cutscenes read as "two mechs / two players")
+- **Observed:**
+  - (device, 2026-10-12) during cutscenes two MCA mechs / player bodies appear in third person.
+  - (device, 2026-10-13) the mod's VR body should **not appear at all** in third-person and
+    cutscene views, but it does; the user also noted the body is missing some geometry ("the extra
+    bits").
+- **Root cause:** the mod draws its own client-side copy of the player body for VR
+  (`CVRStereo::UpdateBody`, `game/VRStereo.cpp:3383`), and the game's cutscene / third-person
+  camera (`m_bUsingExternalCamera`) also renders the real player model. `UpdateServerPlayerModel()`
+  always passes `bShow = DTRUE` (`ShogoSource/ClientShellDLL/RiotClientShell.cpp:8179`); the mod
+  only suppresses its copy for `!m_bVehicle` (`game/VRStereo.cpp:3388-3389`), so whenever the game
+  is on an external / third-person camera the mod copy is still drawn on top of the game's own
+  model.
+- **Fix direction:** hide the mod's body whenever the game is driving a non-first-person camera
+  - pass `bShow = !m_bUsingExternalCamera` (and/or suppress for `GS_MOVIES` and the chase view) at
+  the `UpdateBody` call site, so the game's own model is the only one shown. Keep the mod body for
+  normal first-person gameplay. Separately, check why the mod's body is missing geometry parts.
+- **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp:2809, 2891, 2984`
+  (`m_bUsingExternalCamera`), `:8179`; `game/VRStereo.cpp:3378, 3383-3395` (`HideBody`).
+
+---
+
+## 22. Left-stick deadzone too small / not split between strafe and forward-back
+
+- **Status:** Open
+- **Priority:** Medium (unintended diagonal movement)
+- **Observed (device, 2026-10-12):** the left stick drifts into diagonals too easily; want **at
+  least 15% deadzone on left/right** so diagonal only happens on purpose, and **5-10% on
+  forward/back** (the most common input).
+- **Observed (device, 2026-10-13):** still not fixed - the left/right deadzone "isn't applied", so
+  it is still very hard to walk straight without drifting diagonally.
+- **Root cause:** `GetMoveAxes()` applies a single **radial** dead zone of `0.15` to both axes
+  (`game/VRStereo.cpp:2096-2100`), so strafe and forward share one threshold; a small sideways
+  component survives whenever the stick is mostly forward.
+- **Fix direction:** make the dead zone **per-axis** (anisotropic): forward/back 5-10%, left/right
+  >=15%, then re-normalise so the analog speed cap still behaves. Keep the rotate-to-aim transform.
+- **Refs:** `game/VRStereo.cpp:2096-2100` (`GetMoveAxes`), `:2003-2034` (`VRCommandOn` movement),
+  #11.
+
+---
+
+## 23. Right A (view toggle) / Right B (transform) intermittent and sometimes swapped
+
+- **Status:** Open
+- **Priority:** Medium (core controls feel unreliable)
+- **Observed (device, 2026-10-12):** camera first/third person (A) and vehicle/mech change (B)
+  work only some of the time and occasionally do the **opposite** of what was pressed.
+- **Suspected causes:**
+  1. Both actions are delivered by **injecting the bound keyboard key**
+     (`InjectCommandTap` / `RequestTransform`), which only fires while the game window is
+     foreground (`InjectScanTap`, `game/VRStereo.cpp:3253`) - if focus is elsewhere the tap is
+     silently dropped.
+  2. The injected key uses a **single slot** (`m_nInjScan`); a second tap releases the first
+     early, and `RequestTransform` / `ReleaseTransformKey` (`:3241-3259`) run on their own clock,
+     so pressing A and B close together can clobber each other.
+  3. **Face-key leak:** WinlatorXR also sends the raw letters A/B/X/Y (see #17).
+     `ShouldSwallowFaceKey` only swallows them while `IsControllerActive() && m_bGameplayInput &&
+     !m_bPlayerDead` (`game/VRStereo.cpp:2015-2022`), so in the gaps (just before gameplay input
+     is flagged, in menus, or dead) the raw letter reaches the game and can fire the
+     *keyboard-bound* action - the "opposite of expected".
+  4. The transform press has a release/debounce window; a fast re-press is ignored
+     (`RequestTransform` guards on `m_bTransformKeyDown`).
+- **Fix direction:** serialise/debounce the injected taps (don't share one slot) and make the
+  face-key swallow independent of the gameplay/dead state for A/B/X/Y (or route view/transform
+  through commands the engine polls, if a real keypress is not required). Confirm the raw bool
+  indices (10 = A, 11 = B) against the on-device bool string.
+- **Refs:** `game/XrApiUDP.cpp:432-433`; `game/VRStereo.cpp:2015-2022, 3215-3266`; #17.
+
+---
+
+## 24. On-foot missions never auto-quicksave on level start
+
+- **Status:** Open
+- **Priority:** Medium-High (breaks the #16 death-recovery on those levels)
+- **Observed (device, 2026-10-12):** an on-foot mission did not quicksave on load, so the #16
+  quick-load-on-death has nothing to restore.
+- **Root cause:** the autosave is only armed by `CVRStereo::SetLevelLoaded()`, and the shell only
+  calls that from `UpdateLoadingLevelState()`
+  (`ShogoSource/ClientShellDLL/RiotClientShell.cpp:2538`), which runs while the state is
+  `GS_LOADINGLEVEL`. Levels that show the **bumper / "press any key"** screen enter play via the
+  `GS_BUMPER -> GS_PLAYING` transition (`RiotClientShell.cpp:4691-4703`) on a keypress, which
+  never calls `SetLevelLoaded()`. So any level entered through the bumper screen (the on-foot
+  missions appear to) never arms the autosave.
+- **Fix direction:** also arm the autosave on the `GS_BUMPER -> GS_PLAYING` transition (call
+  `g_VRStereo.SetLevelLoaded()` there), or, more robustly, arm on **any** transition into
+  `GS_PLAYING` from a non-playing state **that is a fresh level** (see #25 for the save-load
+  exclusion).
+- **Refs:** `RiotClientShell.cpp:2515-2540` (`UpdateLoadingLevelState`), `:4691-4704`
+  (`GS_BUMPER`); `game/VRStereo.h:135` (`SetLevelLoaded`); #16, #33.
+
+---
+
+## 25. Auto-quicksave re-arms after loading a save / quick-loading
+
+- **Status:** Open
+- **Priority:** Medium-High (the level-start save can be overwritten by a mid-level state)
+- **Observed (device, 2026-10-12):** the on-load quicksave fires again after the player loads a
+  save file or quick-loads, not only at the very start of a level.
+- **Root cause:** a save load goes `LoadGame()` -> `DoLoadWorld(..., LOAD_RESTORE_GAME)` ->
+  `GS_LOADINGLEVEL` -> `UpdateLoadingLevelState()` -> `SetLevelLoaded()`
+  (`ShogoSource/ClientShellDLL/RiotClientShell.cpp:7430-7440, 7301, 2538`). The autosave can't
+  tell a fresh level from a restored save, so it re-arms and fires ~2 s later - overwriting the
+  level-start quicksave with the current mid-level state and defeating #16's death-recovery.
+- **Fix direction:** only arm the autosave for a **fresh** level. The load flag is available at
+  `DoLoadWorld` (`LOAD_NEW_GAME` = 1 / `LOAD_NEW_LEVEL` = 2 = fresh; `LOAD_RESTORE_GAME` = 3 =
+  save/quick-load; `ShogoSource/Shared/ClientServerShared.h:145-147`). Either set a "this load was
+  a restore" flag in `LoadGame()` / `DoLoadWorld` and have the `SetLevelLoaded()` call honour it,
+  or only arm where the load is not a restore.
+- **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp:7430-7440` (`LoadGame`), `:7301`
+  (`DoLoadWorld` -> `GS_LOADINGLEVEL`), `:2538`; `ShogoSource/Shared/ClientServerShared.h:145-147`;
+  #16, #24, #33.
+
+---
+
+## 26. Intro video sits slightly too high; move it down ~1/8
+
+- **Status:** Open
+- **Priority:** Low (comfort / polish)
+- **Observed (device, 2026-10-12):** the intro movie is a little too high on screen; the user
+  wants it about **1/8 of the screen height lower** from the top.
+- **Root cause / refs:** `CVRStereo::ShiftMovieToRightHalf()` clones the finished Smacker frame
+  into the middle of each eye half at **y = 0** (`game/VRStereo.cpp:1114-1190`, blits at
+  `:1184/:1185/:1190`). Changing that y to `nH/8` moves it down by 1/8.
+- **Fix direction:** shift the movie clone's destination y down by ~`screenHeight/8` (keep the
+  offset valid when the frame is smaller than the half).
+
+---
+
+## 27. Shots don't always appear to come from the weapon model
+
+- **Status:** Open
+- **Priority:** Low-Medium (cosmetic; aim/impact are unaffected)
+- **Observed (device, 2026-10-12):** sometimes muzzle flash / shots don't line up with the visible
+  weapon model.
+- **Root cause:** the mod **hides the game's real first-person weapon model** (all nodes hidden),
+  but that hidden model still drives the muzzle flash and the shot origin, while the **visible**
+  gun is the mod's own copy positioned/oriented at the hand pose (`UpdateHeldGun`,
+  `game/VRStereo.cpp:3618-3629`). The two transforms diverge (especially while the hand moves), so
+  the flash/origin leaves from where the game's hidden gun is, not where the visible one is.
+- **Fix direction (options):**
+  1. Nudge/align the mod gun so its muzzle node matches the game's hidden muzzle each frame (feed
+     the game model's muzzle node world transform into the visible gun) - tightest, but per-model.
+  2. Draw a small "muzzle marker" at the game's real muzzle position so the flash reads as coming
+     from a consistent point.
+  3. Accept it (cosmetic) - impacts follow the game's origin regardless.
+- **Refs:** `game/VRStereo.cpp:3586-3597` (VR gun table), `:3600-3635` (`UpdateHeldGun`).
+
+---
+
+## 28. Hurt / explosion screen flash is not visible at all (comfort)
+
+- **Status:** Reopened (2026-10-13) - the new per-eye vignette **does not appear** on device.
+- **Priority:** Medium-High (no damage feedback; the player can't tell they're being hit)
+- **Device result (2026-10-13):** the player sees **no red (hurt) or white (explosion) flash at
+  all** - the broken quad is gone, but so is the feedback. The tint is not reaching the draw, or the
+  draw happens in a frame/state the HUD pass misses (see candidates below).
+- **Observed (device, 2026-10-12):** the red (hurt) / white (explosion) full-screen flash showed
+  **vertical line patterns down the bottom-left** and a **diagonal solid-transparent block in the
+  top-right** - a classic broken full-screen quad.
+- **Root cause:** every hurt/explosion/pickup flash funnels through
+  `CRiotClientShell::TintScreen()` -> `UpdateScreenTint()` -> `pClientDE->SetCameraLightAdd()`. The
+  shell draws no quad, so the broken two-triangle block is the **engine renderer's** implementation
+  of the camera light-add flash under the two-eye stereo layout (the shell's 2D API has no alpha:
+  `SetupColor1(...,bTransparent)` is a colour key, so a smooth translucent fill isn't drawable
+  either).
+- **Fix applied (2026-10-12):**
+  - `ShogoSource` (`RiotClientShell.cpp`, prose note edit 19): `UpdateScreenTint()` no longer calls
+    `SetCameraLightAdd` while `g_VRStereo.IsActive()` - it feeds the current tint colour to the mod
+    via `g_VRStereo.SetScreenFlash(r,g,b)`, and `ClearScreenFlash()` is called when no tint is
+    active, in `ClearScreenTint()`, and in `HandleMPChangeLevel()`. Non-VR still uses the engine
+    path unchanged.
+  - `game/VRStereo.cpp/.h`: new `SetScreenFlash()` / `ClearScreenFlash()` store the tint, and
+    `DrawScreenFlash(nEye)` draws a clean **per-eye edge vignette** in the HUD 2D pass (beside the
+    #19 scope overlay): nested opaque frames whose outer band is the full tint and whose inner
+    bands ramp down, so the colour fades into the picture; the centre of vision is never covered.
+    Strength and edge thickness scale with the tint's brightest channel.
+- **Suspected causes to check (in order):**
+  1. **Branch:** is `g_VRStereo.IsActive()` true on the tint frames? If not, `UpdateScreenTint()`
+     never feeds `SetScreenFlash()` - log which branch runs.
+  2. **Coverage:** does every hurt/explosion tint really go through `TintScreen()` /
+     `UpdateScreenTint()`? `WeaponFX.cpp:606-689` may call `SetCameraLightAdd` **directly** and
+     bypass the VR reroute - log `SetScreenFlash()` calls against the triggering events.
+  3. **Timing:** is the HUD 2D pass (`Begin2D(nEye, DTRUE)`, where `DrawScreenFlash()` lives)
+     running on those frames (not a menu / movie / loading state)? A one-frame tint latched then
+     cleared before the pass would draw nothing - consider latching for several frames.
+  4. **Geometry / colour:** confirm the nested opaque frames land inside the eye rect and use a
+     non-keyed colour (`SetupColor1`'s 4th arg is a transparent-colour key) and that
+     `m_pfnFillRect` is the cached original.
+- **Fix direction:** instrument `SetScreenFlash` / `ClearScreenFlash` / `DrawScreenFlash` with log
+  lines (colour, frame, branch), reproduce a hurt and an explosion on device, and follow whichever
+  candidate the logs point to.
+- **Still to verify (device):** hurt shows a red edge vignette and explosions a white one; the
+  broken line/diagonal block stays gone; the vignette reads well and never covers the centre.
+- **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `UpdateScreenTint`/`ClearScreenTint`/
+  `HandleMPChangeLevel`; `WeaponFX.cpp:606-689` (explosion tint), `:6690` (hurt), `:9814` (pickup);
+  `game/VRStereo.cpp` `SetScreenFlash`/`ClearScreenFlash`/`DrawScreenFlash`; `game/VRStereo.h`.
+
+---
+
+## 29. Muzzle flash is centred on the view instead of attached to the visible gun
+
+- **Status:** Open
+- **Priority:** Medium (immersion; the flash reads as coming from the player's face)
+- **Observed (device, 2026-10-13):** the muzzle flash now appears **centred in the player's view**
+  rather than at the muzzle of the visible 3D gun.
+- **Root cause / context:** the mod hides the game's real first-person weapon model and draws its
+  own gun at the hand pose (`CVRStereo::UpdateHeldGun`). Any effect the game anchors to the hidden
+  model - the muzzle flash / attached sprite - therefore appears where the hidden model sits (at or
+  near the camera), not at the visible gun. This is a specific, reproducible case of #27 ("shots
+  don't always appear to come from the weapon model") and should be fixed together with it.
+- **Fix direction:** see #27 - drive the flash (and the shot origin) from the visible gun's muzzle
+  node, or move the hidden model's muzzle to match the visible gun each frame.
+- **Refs:** `game/VRStereo.cpp` `UpdateHeldGun` / VR gun table; #27.
+
+---
+
+## 30. Trim the in-game VR menu and pin the removed options to fixed defaults
+
+- **Status:** Open (requested 2026-10-13)
+- **Priority:** Medium (clean-up; removes options that no longer do anything useful)
+- **Requested:** remove most of the in-game VR settings rows and hard-default them, leaving only a
+  short list. The internal menu **virtual layout** from #5 is not a user row and stays as it is.
+- **Remove these rows, defaulting each to the value shown:**
+  - two-handed aiming -> OFF
+  - aim with -> GUN HAND
+  - walk towards -> WHERE YOU LOOK
+  - comfort vignette -> 0%
+  - lean with head (6dof) -> ON
+  - stereo depth -> 64 mm (ignored; we use WinlatorXR XrApi's IPD instead)
+  - aim helper -> NONE
+  - game crosshair -> OFF
+  - show body -> ON
+  - body arms -> HIDDEN
+  - gun model -> first person (detailed)
+  - gun arms -> SHOWN
+  - easy ladders -> ON
+  - hud width -> 60 DEG
+  - hud distance -> 3.5 m
+  - sharp hud panel -> AUTOMATIC
+  - menu screen size -> 80 deg
+  - gun size on foot -> 1.5x
+  - gun size in mech -> 1.5x
+  - sharpening -> 50%
+  - upscaling -> ON
+- **Keep these rows (default in brackets):**
+  - dominant hand [right-handed]
+  - hand roll flip [off] - **relabel** the row: the current default already corrects a Quest 3's
+    roll, so it should read **off** (not "flipped"), since a Quest 3 is the norm.
+  - turning [smooth]
+  - smooth turn speed [150 deg/s]
+  - recentre view
+  - reset to defaults (restores the defaults above and here)
+- **Implementation notes:**
+  - Rows live in `game/VRMenu.cpp` (`VRMENU_ITEMS` array, currently 28) mapped to `CVRStereo`
+    VarTracks. Removing rows means dropping the entries and lowering `VRMENU_ITEMS` (and the
+    `MAX_GENERIC_ITEMS` capacity in ShogoSource `BaseMenu.h` if it can be lowered - or just leave
+    headroom).
+  - Keep the **defaults** in the VarTrack `Init(...)` calls (or the settings array) at the values
+    above, so a fresh config and "reset to defaults" land on them.
+  - Confirm the "menu screen size" row maps to the angular width (`VRMenuWidth`, 80 deg) and not to
+    the internal virtual layout from #5 (`VRMenuLayout`, 640).
+- **Refs:** `game/VRMenu.cpp` (item array), `game/VRStereo.cpp` (`m_vt*` VarTrack defaults),
+  `ShogoSource/ClientShellDLL/BaseMenu.h` (`MAX_GENERIC_ITEMS`); #5.
+
+---
+
+## 31. Right B doesn't toggle mech walking / vehicle mode (raw A/B keystrokes leak)
+
+- **Status:** Open (reported on device 2026-10-13)
+- **Priority:** Medium (core mech action)
+- **Observed (device, 2026-10-13):** pressing **B** does not toggle mech walking / vehicle mode
+  ("the transform") on/off in mech levels. The user's diagnosis: the **raw `B` keyboard letter is
+  still being passed to the game** (WinlatorXR sends the face-button letters in addition to the
+  mapped action), so the toggle misbehaves.
+- **Mapping is correct (no remap needed):** #15 maps **Right B -> TRANSFORM** (mech walking /
+  vehicle mode) and **Right A -> VIEWTOGGLE** (first/third-person camera). The user confirms B is
+  the intended button - the fault is the **leaked keystroke**, not the mapping.
+- **Requested fix:** **block the `A` and `B` keyboard letters from reaching the game except while
+  in the pause menu.** (They're wanted only in the pause menu; everywhere else they must be
+  swallowed so only the mapped actions fire.)
+- **Relationship to existing entries:** this is the face-key leak of **#17** (A/B/X/Y), whose fix
+  evidently still lets A/B through, and it feeds **#23** (A/B intermittent / swapped). The current
+  swallow only covers `IsControllerActive() && m_bGameplayInput && !m_bPlayerDead`
+  (`game/VRStereo.cpp` `ShouldSwallowFaceKey`), so it misses menus, transitions and the dead state.
+- **Fix direction:** widen the swallow so `A`/`B` are blocked in every state **except** the pause
+  menu (allow only there), rather than only during active gameplay. Confirm the raw bool indices
+  (10 = A, 11 = B) on device.
+- **Refs:** `game/VRStereo.cpp` `ShouldSwallowFaceKey` / `InjectCommandTap` / `RequestTransform`,
+  `CRiotClientShell::OnKeyDown` / `OnKeyUp`; #15, #17, #23.
+
+---
+
+## 32. Jump intermittently stops working (an input flag appears to stick)
+
+- **Status:** Open (reported on device 2026-10-13)
+- **Priority:** High (core movement; "sometimes unable to jump again randomly")
+- **Observed (device, 2026-10-13):** the player can, at random, no longer jump; the user suspects an
+  input boolean is being held down when it should have been cleared.
+- **Suspected cause:** jump is answered by `VRCommandOn(COMMAND_ID_JUMP)` from the `JUMP |
+  DOUBLEJUMP` bits (left grip / right grip). A "held" flag that is never cleared (a dropped release
+  never clears `m_nButtons`, a stalled feed leaves the bit set, or the shared `m_nInjScan` /
+  `InjectScanTap` slot latches) would make the game keep seeing jump down and ignore the next press.
+  Related: #23's shared injection slot and #9's stalled-feed handling.
+- **Fix direction:** audit the jump path - make sure the button bit and any injected key are cleared
+  when the XrApi release is (or should be) seen, and that a stalled/disconnected feed resets held
+  booleans (see #9). Add a log line on jump-down / jump-up transitions to catch a stuck state on
+  device.
+- **Refs:** `game/XrApiUDP.cpp` (`ButtonBits`), `game/VRStereo.cpp` `VRCommandOn` / `UpdateInput` /
+  `InjectScanTap`; #9, #15, #23.
+
+---
+
+## 33. Auto-quicksave doesn't fire when loading into a new area of a level
+
+- **Status:** Open (reported on device 2026-10-13)
+- **Priority:** Medium (same death-recovery family as #24 / #25)
+- **Observed (device, 2026-10-13):** entering a new **area** within a level does not re-trigger the
+  quick save.
+- **Context:** the same autosave mechanism as #24 (a level entered via the bumper screen never arms
+  it) and #25 (it re-arms after a save load). Here the trigger is an in-level **area** load rather
+  than a level start / restore; the autosave appears to fire once per level and is not re-armed for
+  later areas.
+- **Fix direction:** decide the intended policy (save on every fresh area load?), then arm the
+  autosave on the area-load transition as well, honouring the #25 "fresh load only" exclusion.
+- **Refs:** `RiotClientShell.cpp:2515-2540` (`UpdateLoadingLevelState`), `:7301` (`DoLoadWorld`);
+  `game/VRStereo.h:135` (`SetLevelLoaded`); #16, #24, #25.
+
+---
+
+## 34. Weapon model sits lower than the shot origin (aiming is off)
+
+- **Status:** Open (reported on device 2026-10-13)
+- **Priority:** Medium-High (shots don't line up with the visible gun)
+- **Observed (device, 2026-10-13):** the 3D weapon models appear **lower** than where their
+  projectiles actually leave from, so it is hard to aim - the visible gun and the shot origin are
+  vertically misaligned.
+- **Root cause (suspected):** the mod hides the game's real first-person weapon model and draws its
+  own at the hand pose (`UpdateHeldGun`), while the game still spawns the projectile from the
+  **hidden** model's muzzle / camera origin. If the drawn gun sits lower than the hidden model, the
+  shot tracks the hidden model, not the visible one - the same mismatch behind #27 (shots vs
+  weapon model) and #29 (muzzle flash on the visible gun).
+- **Fix direction:** fix together with #27 / #29 - drive both the visible gun's placement and the
+  shot origin from the same muzzle node (or offset the drawn gun to match the hidden model's
+  muzzle) so the gun, muzzle flash and projectile origin coincide. Verify the vertical offset on a
+  known weapon on device.
+- **Refs:** `game/VRStereo.cpp` `UpdateHeldGun`; `ShogoSource/ClientShellDLL/RiotClientShell.cpp`
+  (weapon model / muzzle origin); #27, #29.
 
 ---
 
@@ -641,19 +1109,64 @@ Legend: `Open` / `In progress` / `Fixed` / `Won't fix`.
   roll (`VRHandFlip` inverted so `0` = corrected) are now confirmed on device. If the
   hand *aim* is ever found wrong, fix the hand frame in `GetHandWorld()` /
   `ToGameSpace()` against the (known-good) HMD basis rather than re-using the flag.
-- **Input path (#3, #4, #15, #16, #17, #18):** the controller->game path (#3) and firing (#4)
-  are verified on device. #15 (revised mapping), #16 (auto-quicksave at level start +
-  quick-load on the left trigger when dead), #17 (the face-button keystrokes A/B/X/Y no
-  longer leak) and #18 (Left-Y re-selects the equipped weapon to toggle zoom) are fixed in
-  code and need on-device verification. Also reconcile each XrApi bool index in
-  `ButtonBits()` against the on-device bool string. See #9 for what should happen when the
-  input feed itself stalls.
+- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32):** the controller->game path (#3)
+  and firing (#4) are verified on device. #15 (revised mapping), #16 (auto-quicksave at level start
+  + quick-load on the left trigger when dead) and #17 (the face-button keystrokes A/B/X/Y no longer
+  leak) are fixed in code and need on-device verification. #18 (Left-Y re-selects the equipped
+  weapon to toggle zoom) is being **removed** with #19. #20 (crouch toggle/hold) - the VR body
+  plays its crouch animation, but the camera never moves, so it is still **In progress**; the body
+  showing in third-person / cutscene views moved to #21. #23 (A/B view/transform) is intermittent
+  because the actions inject a foreground-gated key through a single shared slot, and the face-key
+  swallow (#17) does not cover every state. #31 (the `B` transform toggle breaks because the **raw
+  A/B keystrokes still leak** - block them everywhere except the pause menu; see #17) and #32 (jump
+  intermittently stops working, as if an input flag is stuck) are open (2026-10-13); #31 shares
+  #17's / #23's face-key leak and injection root cause. #22 (left-stick deadzone) still isn't
+  applied on device (2026-10-13) and needs a per-axis split. Also reconcile each XrApi bool index
+  in `ButtonBits()` against the on-device bool string. See #9 for what should happen when the input
+  feed itself stalls.
+- **Zoom (#18 -> #19, was RELEASE BLOCKER):** the pin-FOV half stays (the eye FOV is never
+  multiplied by the zoom ratio, so the presented scale/FOV can't blow up), but the **scope-cursor
+  zoom failed on device (2026-10-13)** and is being **removed for now**: drop the `ZOOM` mapping
+  and the Left-Y toggle and delete the scope overlay. True magnification needs the offscreen
+  second pass (option 2) if it is ever wanted.
+- **Autosave / save-load (#16, #24, #25, #33):** the death-recovery autosave is armed only from
+  `UpdateLoadingLevelState` (`GS_LOADINGLEVEL`), so (a) levels entered via the **bumper screen**
+  (`GS_BUMPER -> GS_PLAYING`) never arm it (#24), (b) a save/quick-load also passes through that
+  path and re-arms it (#25), and (c) an in-level **area** load does not re-trigger it once the
+  level-level save has fired (#33). Arm on the bumper transition and on fresh area loads, but only
+  for a **fresh** load - use the `DoLoadWorld` flag (`LOAD_RESTORE_GAME` = save/quick-load).
+- **Player body (#20, #21):** the mod's VR body is a separate client-side copy. Its crouch
+  animation works, but crouch does **not** move the VR camera (#20, reopened) - and the body
+  should not be visible in third-person / cutscene views anyway (#21), so crouch currently has no
+  useful VR effect. Hide the body on any non-first-person camera (`m_bUsingExternalCamera` or the
+  chase view), add a mod-side eye-height offset for a real duck, and check why the body is missing
+  geometry.
+- **Weapon model / effects (#27, #29, #34):** the mod hides the game's real first-person weapon
+  model and draws its own at the hand pose, so effects the game anchors to the hidden model (the
+  **muzzle flash**) appear at the hidden gun / camera rather than the visible gun (#29), the visible
+  gun sits **lower than the shot origin** (#34, hard to aim), and shot origins can diverge (#27).
+  Fix them together - drive the visible gun's placement, the muzzle flash and the projectile origin
+  from the same muzzle node (or align the hidden model's muzzle each frame), then verify the
+  vertical offset on device.
+- **Hurt / explosion flash (#28):** the engine camera light-add was replaced by a per-eye edge
+  vignette (opaque nested frames; the 2D API has no alpha), but the vignette **does not appear on
+  device** (2026-10-13) - no hurt/explosion feedback at all. Reopened: the tint is not reaching the
+  draw (a bad `IsActive` branch, a direct `SetCameraLightAdd` path in `WeaponFX.cpp`, or a
+  frame/state the HUD pass misses) - instrument and re-test.
+- **2D content per eye (#5, #6, #10, #12):** menus, splash, movies and the loading/bumper
+  screens must all be centered in each eye; the engine video player runs in `Client.exe` and is
+  the one case that can't be re-projected from `CShell.dll`. **#5's menu virtual-layout is
+  verified on device (2026-10-13) - text is readable.** **#12 (loading / bumper screen) is still
+  mono/split with unreadable text (2026-10-13)** - fix it the same way as #5 (small virtual canvas +
+  per-eye `Begin2D`). #26 (intro movie y-offset) is the same movie path as #10. See #30 for the menu
+  trim.
+- **Settings menu (#30, #5):** with the menu now readable (#5, verified) the in-game VR page is
+  being **trimmed** to a short list (dominant hand, hand roll flip, turning, smooth turn speed,
+  recentre, reset) with most rows removed and the removed options pinned to the fixed defaults
+  listed in #30. The internal menu virtual layout from #5 is not a user row and stays.
 - **Frame pacing / headset stall (#9):** `VRSyncHold` (now on by default) hard-blocks
   `Poll()` on a fresh `HMD_SYNC`; an unbounded hang is accepted because the WinlatorXR sandbox
   can be torn down if the runtime is gone for good.
-- **2D content per eye (#5, #6, #10, #12):** menus, splash, movies and the loading/bumper
-  screens must all be centered in each eye; the engine video player runs in `Client.exe` and is
-  the one case that can't be re-projected from `CShell.dll`.
 - **Testing:** PC smoke test first (windowed, borderless, sync pixel, menus per eye), then on
   device (Quest 3, WinlatorXR, 2800x1400 SBS). Grep the desktop build a log line with each
   changed behaviour (e.g. "VR: dropped the title bar") to confirm deployment.

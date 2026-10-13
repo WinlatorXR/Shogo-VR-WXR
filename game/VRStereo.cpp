@@ -79,6 +79,10 @@ CVRStereo::CVRStereo()
 	m_bHooked			= DFALSE;
 	m_bCrosshairPass	= DFALSE;
 	m_bLastImmersive	= DFALSE;
+	m_bFlash			= DFALSE;
+	m_fFlashR			= 0.0f;
+	m_fFlashG			= 0.0f;
+	m_fFlashB			= 0.0f;
 	m_nCurEye			= 0;
 	m_hScreen			= DNULL;
 	m_nMode				= VR_STEREO_OFF;
@@ -159,7 +163,6 @@ CVRStereo::CVRStereo()
 	m_fLastOutYaw			= 0.0f;
 	m_bSnapLatched			= DFALSE;
 	m_nWeaponLatch			= 0;
-	m_nWeaponId				= -1;
 	m_nMenuDir				= 0;
 	m_fMenuRepeatTime		= 0.0f;
 	m_fWorldScaleUsed		= 40.0f;
@@ -517,6 +520,37 @@ void CVRStereo::GetHalfRect(int nEye, int &nLeft, int &nRight)
 	}
 }
 
+// The size menus should lay themselves out for.  While VR is active this is
+// the small virtual screen from ComputeLayout (fonts/art are fixed pixel
+// sizes, so a smaller layout makes them bigger and the per-eye xform scales
+// the whole thing back up into the headset panel).  Returns DFALSE when VR is
+// not in play, so the caller keeps the real screen size. (#5)
+DBOOL CVRStereo::GetMenuLayoutSize(int *pW, int *pH)
+{
+	if (!IsActive() || !m_bBridgeAlive) return DFALSE;
+	if (pW) *pW = (int)VRRound(m_fMenuVirtW);
+	if (pH) *pH = (int)VRRound(m_fMenuVirtH);
+	return DTRUE;
+}
+
+// Screen flash (#28).  The game's hurt/explosion flash is normally applied by
+// the shell as an engine camera light-add, but under the stereo render that
+// light-add comes out as a broken full-screen quad.  While VR is active the
+// shell feeds the current tint colour here each frame instead and the mod draws
+// a clean per-eye edge vignette (DrawScreenFlash).
+void CVRStereo::SetScreenFlash(DFLOAT r, DFLOAT g, DFLOAT b)
+{
+	m_fFlashR = r;
+	m_fFlashG = g;
+	m_fFlashB = b;
+	m_bFlash = (r > 0.0f || g > 0.0f || b > 0.0f) ? DTRUE : DFALSE;
+}
+
+void CVRStereo::ClearScreenFlash()
+{
+	m_bFlash = DFALSE;
+}
+
 void CVRStereo::ComputeLayout()
 {
 	// The HUD in the headset is laid out for a small virtual screen...
@@ -534,8 +568,14 @@ void CVRStereo::ComputeLayout()
 	DFLOAT fMenuLayout = m_vtMenuLayout.GetFloat(640.0f);
 	if (fMenuLayout < 320.0f) fMenuLayout = 320.0f;
 	if (fMenuLayout > (DFLOAT)m_nScreenW) fMenuLayout = (DFLOAT)m_nScreenW;
-	m_fMenuVirtW = (DFLOAT)VRRound(fMenuLayout);
-	m_fMenuVirtH = (DFLOAT)VRRound(fMenuLayout * 0.75f);
+	DFLOAT fNewMenuW = (DFLOAT)VRRound(fMenuLayout);
+	DFLOAT fNewMenuH = (DFLOAT)VRRound(fMenuLayout * 0.75f);
+	if (fNewMenuW != m_fMenuVirtW || fNewMenuH != m_fMenuVirtH)
+	{
+		m_fMenuVirtW = fNewMenuW;
+		m_fMenuVirtH = fNewMenuH;
+		if (m_bBridgeAlive) m_bMenuLayoutDirty = DTRUE;	// menus must re-lay out (#5)
+	}
 
 	// ...and, when possible, drawn once at its original pixel size into a
 	// strip along the bottom of the window, which the bridge shows as its own
@@ -787,12 +827,14 @@ void CVRStereo::RenderStereo(HLOCALOBJ hCamera, HLOCALOBJ* pObjects, int nObject
 		rcMono.right = nOrigR; rcMono.bottom = nOrigB;
 	}
 
-	// Zoom: only a real zoom IN (the sniper scope) narrows the view.  The
-	// camera's FOV changes for other reasons too - the server sends one made
-	// for a 4:3 screen on every player-mode change (each level start, each
-	// transform) and a wider one in a mech's vehicle mode - and in a headset
-	// none of that may change what you see.  So: horizontal angle only (the
-	// server's vertical one assumes 4:3), and never wider than normal.
+	// Zoom: the game narrows its camera FOV for the sniper scope, and changes
+	// it for other reasons too (a 4:3 one per player-mode change, a wider one
+	// in a mech's vehicle mode).  In a headset none of that may change what we
+	// present, so we DON'T feed it into the eye FOV (#19): the picture stays
+	// pinned to the headset base FOV and fills the view (a narrow eye FOV made
+	// the runtime present a tiny centre image and could get stuck zoomed).  The
+	// ratio is only logged so camera FOV changes still show up in the log;
+	// weapon zoom is removed for now and never applied to the eye view.
 
 	DFLOAT fZoom = 1.0f;
 	if (fOrigFovX > 0.001f && m_fLastBaseFovX > 0.001f) fZoom = fOrigFovX / m_fLastBaseFovX;
@@ -801,14 +843,13 @@ void CVRStereo::RenderStereo(HLOCALOBJ hCamera, HLOCALOBJ* pObjects, int nObject
 
 	if (fZoom >= 1.0f && ((DFLOAT)fabs(fOrigFovX - m_fLoggedCamFovX) > 0.01f || (DFLOAT)fabs(fOrigFovY - m_fLoggedCamFovY) > 0.01f))
 	{
-		Log("Game camera FOV is now %.1f x %.1f degrees (headset view %s)", VR_RAD2DEG(fOrigFovX), VR_RAD2DEG(fOrigFovY),
-			fZoom < 1.0f ? "zoomed in to match" : "unchanged");
+		Log("Game camera FOV is now %.1f x %.1f degrees (headset view pinned)", VR_RAD2DEG(fOrigFovX), VR_RAD2DEG(fOrigFovY));
 		m_fLoggedCamFovX = fOrigFovX;
 		m_fLoggedCamFovY = fOrigFovY;
 	}
 	if ((DFLOAT)fabs(fZoom - m_fLoggedZoom) > 0.05f)
 	{
-		Log("Zoom %.2fx", fZoom);
+		Log("Camera zoom %.2fx (not applied to the eye view)", fZoom);
 		m_fLoggedZoom = fZoom;
 	}
 
@@ -873,13 +914,14 @@ void CVRStereo::RenderStereo(HLOCALOBJ hCamera, HLOCALOBJ* pObjects, int nObject
 			GetHalfRect(nEye, nLeft, nRight);
 			pClientDE->SetCameraRect(hCamera, DFALSE, nLeft, 0, nRight, (int)m_nEyeH);
 
-			fEyeFovY = ClampFov(BaseEyeFovY(m_fLastBaseFovX) * fZoom);
+			// Zoom never changes the rendered scale (#19): the eye FOV stays
+			// pinned to the headset base so the SBS picture keeps filling the
+			// view.  Weapon zoom is removed for now, so nothing else to do.
+			fEyeFovY = ClampFov(BaseEyeFovY(m_fLastBaseFovX));
 			fEyeFovX = ClampFov(FovXFromFovY(fEyeFovY, EyeAspect()));
 
-			// Shrink the eye distance while zoomed so the scope doesn't
-			// turn into binoculars with extreme depth.
-			fSep = fIpdWorld * (fZoom < 1.0f ? fZoom : 1.0f);
-			fReportSep = GetIPDMeters() * (fZoom < 1.0f ? fZoom : 1.0f);
+			fSep = fIpdWorld;
+			fReportSep = GetIPDMeters();
 
 			m_fFocalRender	= FocalFromFovX(fEyeFovX);
 			m_fIpdWorld		= fSep;
@@ -1091,6 +1133,12 @@ void CVRStereo::Begin2D(int nEye, DBOOL bHud)
 	ComputeXform(nEye, fCrossSX, fCrossSY, -EyeSign(nEye) * fDisparity, m_fVirtW, m_fVirtH, m_xfCross);
 
 	InstallHooks();
+
+	// Hurt/explosion vignette (#28): only for the HUD pass, over the world, under the HUD.
+	if (bHud)
+	{
+		DrawScreenFlash(nEye);
+	}
 }
 
 void CVRStereo::End2D()
@@ -1100,9 +1148,78 @@ void CVRStereo::End2D()
 	RemoveHooks();
 	m_nCurEye = 0;
 	m_bVirtualHud = DFALSE;
+	m_bVirtual2D = DFALSE;
 	m_bSkipNonCross = DFALSE;
 	m_fVirtW = (DFLOAT)m_nScreenW;
 	m_fVirtH = (DFLOAT)m_nScreenH;
+}
+
+// Screen flash (#28): a per-eye edge vignette that stands in for the game's
+// hurt (red) / explosion (white) full-screen flash.  The shell feeds the tint
+// colour (SetScreenFlash) instead of using the engine camera light-add, whose
+// full-screen quad breaks under the stereo render.  Drawn with opaque fills
+// (the 2D API has no alpha): nested frames whose outer band is the full tint
+// and whose inner bands ramp down, so the colour fades into the picture.  The
+// vignette only ever touches the edges - the centre of vision stays clear,
+// which is the comfortable choice for VR.
+void CVRStereo::DrawScreenFlash(int nEye)
+{
+	if (!m_bFlash || !m_pClientDE || !m_hScreen || !m_pfnFillRect) return;
+
+	int nLeft = 0, nRight = 0;
+	GetHalfRect(nEye, nLeft, nRight);
+	int nEyeW = nRight - nLeft;
+	int nEyeH = (int)m_nEyeH;
+	if (nEyeW < 8 || nEyeH < 8) return;
+
+	DFLOAT fR = m_fFlashR, fG = m_fFlashG, fB = m_fFlashB;
+
+	// Strength = the tint's brightest channel; the edge grows with it.
+	DFLOAT fStr = fR;
+	if (fG > fStr) fStr = fG;
+	if (fB > fStr) fStr = fB;
+	if (fStr <= 0.001f) return;
+	if (fStr > 1.0f) fStr = 1.0f;
+
+	int nShort = (nEyeW < nEyeH) ? nEyeW : nEyeH;
+	int nMax = (int)(0.16f * (DFLOAT)nShort);
+	if (nMax < 6) nMax = 6;
+	int nThick = (int)(fStr * (DFLOAT)nMax);
+	if (nThick < 2) nThick = 2;
+
+	// Nested frames, outermost = full tint, inner bands dimmer (a fake falloff).
+	const int nBands = 5;
+	int nBandW = nThick / nBands;
+	if (nBandW < 1) nBandW = 1;
+
+	for (int i = 0; i < nBands; i++)
+	{
+		DFLOAT f = 1.0f - (DFLOAT)i * (0.8f / (DFLOAT)nBands);
+		if (f < 0.2f) f = 0.2f;
+
+		HDECOLOR col = m_pClientDE->SetupColor1(fR * f, fG * f, fB * f, DFALSE);
+
+		int L = nLeft + i * nBandW;
+		int R = nRight - i * nBandW;
+		int T = i * nBandW;
+		int B = nEyeH - i * nBandW;
+		if (R - L < 4 || B - T < 4) break;
+
+		int q = nBandW;
+		if (R - L < 2 * q + 2) q = (R - L - 2) / 2;
+		if (B - T < 2 * q + 2) q = (B - T - 2) / 2;
+		if (q < 1) break;
+
+		DRect rc;
+		rc.left = L; rc.top = T; rc.right = R; rc.bottom = T + q;
+		m_pfnFillRect(m_hScreen, &rc, col);
+		rc.left = L; rc.top = B - q; rc.right = R; rc.bottom = B;
+		m_pfnFillRect(m_hScreen, &rc, col);
+		rc.left = L; rc.top = T + q; rc.right = L + q; rc.bottom = B - q;
+		m_pfnFillRect(m_hScreen, &rc, col);
+		rc.left = R - q; rc.top = T + q; rc.right = R; rc.bottom = B - q;
+		m_pfnFillRect(m_hScreen, &rc, col);
+	}
 }
 
 // The engine's movie player (inside Client.exe) draws the Smacker frame
@@ -1528,7 +1645,7 @@ void CVRStereo::Hook_DrawStringToSurface(HSURFACE hDest, HDEFONT hFont, HSTRING 
 void CVRStereo::Hook_GetSurfaceDims(HSURFACE hSurf, DDWORD *pWidth, DDWORD *pHeight)
 {
 	CVRStereo &s = g_VRStereo;
-	if (s.m_bVirtualHud && hSurf == s.m_hScreen)
+	if (s.m_bVirtual2D && hSurf == s.m_hScreen)
 	{
 		if (pWidth)  *pWidth  = (DDWORD)VRRound(s.m_fVirtW);
 		if (pHeight) *pHeight = (DDWORD)VRRound(s.m_fVirtH);
@@ -1746,6 +1863,7 @@ void CVRStereo::UpdateBridge()
 	if (m_bBridgeAlive != m_bLoggedBridge)
 	{
 		Log(m_bBridgeAlive ? "Headset connected (XrApi)" : "Headset gone (XrApi)");
+		if (m_bBridgeAlive) m_bMenuLayoutDirty = DTRUE;		// VR menu size is now in play (#5)
 		m_bLoggedBridge = m_bBridgeAlive;
 	}
 
@@ -3321,12 +3439,6 @@ void CVRStereo::UpdateInput()
 		if ((nPress & SHOGOVR_BTN_LEFT_TRIGGER) && m_bPlayerDead)
 			InjectCommandTap(COMMAND_ID_QUICKLOAD);
 
-		// Left Y: re-select the equipped weapon, which toggles its zoom (#18).
-		if (nPress & SHOGOVR_BTN_ZOOM)
-		{
-			int nCmd = GetCommandId(m_nWeaponId);
-			if (nCmd > 0) InjectCommandTap(nCmd);
-		}
 		// Right A: first/third person view.
 		if (nPress & SHOGOVR_BTN_VIEWTOGGLE)	InjectCommandTap(COMMAND_ID_CHASEVIEWTOGGLE);
 		// Right stick click: recentre the view.
@@ -3378,6 +3490,17 @@ void CVRStereo::SetBodyAnim(const char* szAnim, DBOOL bLoop)
 void CVRStereo::HideBody()
 {
 	if (m_pClientDE && m_hBody) m_pClientDE->SetObjectFlags(m_hBody, 0);
+}
+
+// Crouch state for the visible body (#20).  Shogo has no on-foot crouch physics
+// (CMoveMgr never ducks), so the crouch controls - Left X toggles, left stick
+// click holds - do not lower the camera; feeding this into UpdateBody() at
+// least shows the player crouching.  Mirrors VRCommandOn(COMMAND_ID_DUCK).
+DBOOL CVRStereo::IsCrouchOn()
+{
+	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
+	DDWORD nHeld = m_nButtons & ~m_nSuppressed;
+	return (m_bCrouchOn || (nHeld & SHOGOVR_BTN_CROUCH_HOLD)) ? DTRUE : DFALSE;
 }
 
 void CVRStereo::UpdateBody(HLOCALOBJ hPlayerObj, int nModelId, DBOOL bShow, DBOOL bCrouching)
@@ -3604,9 +3727,6 @@ void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &
 {
 	if (!m_pClientDE) return;
 	CClientDE* pClientDE = m_pClientDE;
-
-	// Remember the equipped weapon so Left-Y can re-select it (zoom toggle).
-	m_nWeaponId = nWeaponId;
 
 	// Only when the hand aims, the option is on, and the game is actually
 	// showing a gun right now (not mid-switch, not with view weapons off).

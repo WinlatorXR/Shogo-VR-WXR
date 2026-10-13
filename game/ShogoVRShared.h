@@ -44,7 +44,6 @@
 #define SHOGOVR_BTN_TRANSFORM		0x00000100	// right B - transform vehicle/mech
 #define SHOGOVR_BTN_DOUBLEJUMP		0x00000200	// right grip - double jump
 #define SHOGOVR_BTN_LEFT_TRIGGER	0x00000400	// left trigger - F9 (quick load) when dead
-#define SHOGOVR_BTN_ZOOM			0x00000800	// left Y - weapon zoom (re-select the equipped weapon)
 #define SHOGOVR_BTN_VIEWTOGGLE		0x00001000	// right A - first/third person view
 #define SHOGOVR_BTN_RECENTER		0x00002000	// right stick click - recentre the view
 #define SHOGOVR_BTN_CROUCH_HOLD		0x00004000	// left stick click - crouch (held)

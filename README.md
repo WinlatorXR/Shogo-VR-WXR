@@ -19,14 +19,14 @@ This version has much less customization available to make it a clean open-and-p
 * Left controller stick: Move
 * Left controller stick click: Crouch (**hold**)
 * Left controller X button: Crouch (**toggle**)
-* Left controller Y button: Zoom toggle (if weapon has zoom)
+* Left controller Y button: Zoom toggle (if weapon has zoom) **Entirely disabled at the moment**
 * Left controller grip: Jump
 * Left controller trigger: **F9 (quick load) while dead**; nothing while alive
+* Left controller menu button: Menu / Esc (skip intro cutscenes)
 * Right controller trigger: Fire
 * Right controller grip: Double jump (a single jump when on foot)
 * Right controller A button: Toggle first/third person camera
 * Right controller B button: Toggle vehicle / mech mode
-* Left controller menu button: Menu / Esc (skip intro cutscenes)
 * Right controller stick: Turn (left/right) and change weapon (up/down)
 * Right controller stick click: Re-centre the view
 

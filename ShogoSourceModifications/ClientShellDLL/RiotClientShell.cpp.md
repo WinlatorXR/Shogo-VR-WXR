@@ -2,16 +2,18 @@
 
 **Goal:** mount the `g_VRStereo` (`CVRStereo`) module into the client-shell
 lifecycle, expose a `VRRecenter` console command, feed head tracking / aim /
-mech state / player body into the VR module, make `RenderCamera`, the
-pause/menu screens and the splash stereo-aware, clone the intro movies per eye,
-drop WinlatorXR's leaked face-button keys, and stamp the WinlatorXR frame-sync
-pixel.
+mech state / player body (including crouch) into the VR module, make
+`RenderCamera`, the pause/menu screens and the splash stereo-aware, clone the
+intro movies per eye, hand the hurt/explosion screen tint to the mod instead of
+the engine camera light-add, drop WinlatorXR's leaked face-button keys, and
+stamp the WinlatorXR frame-sync pixel.
 
-All edits are additions except the `RenderCamera` change, the
-`UpdateMenuState`/`UpdatePausedState` change, and the `ShowSplash` /
-`PlayIntroMovies` changes. Code blocks show only the mod's own
-added lines; the control-flow changes are described in prose so no original
-source is reproduced.
+All edits are additions except the `Update` menu-re-layout block, the
+`RenderCamera` change, the `UpdateMenuState`/`UpdatePausedState` change, the
+`ShowSplash` / `PlayIntroMovies` changes, the crouch argument in
+`UpdateServerPlayerModel`, and the screen-tint branch. Code blocks show only the
+mod's own added lines; the control-flow changes are described in prose so no
+original source is reproduced.
 
 Line numbers below refer to the pristine `shogosrc/ClientShellDLL/RiotClientShell.cpp`
 (~9990 lines); your copy may differ by a few lines.
@@ -36,6 +38,7 @@ Line numbers below refer to the pristine `shogosrc/ClientShellDLL/RiotClientShel
 | 16. `OnKeyDown`             | line 4565 |
 | 17. `OnKeyUp`               | line 4900 |
 | 18. `UpdateLoadingLevelState`| line 2515 |
+| 19. `UpdateScreenTint` / `ClearScreenTint` / `HandleMPChangeLevel` | lines 3440 / 3493 / 9329 |
 
 ---
 
@@ -135,11 +138,22 @@ Add:
 ```cpp
 g_VRStereo.CheckSettingsFile();
 g_VRStereo.UpdateBridge();
+if (g_VRStereo.ConsumeMenuLayoutChanged())
+{
+	m_menu.ScreenDimsChanged();		// VR menu size became available - re-lay out (#5)
+}
 g_VRStereo.CheckRenderer(DTRUE);
 g_VRStereo.SetGameplayInput(m_nGameState == GS_PLAYING);
 g_VRStereo.SetPlayerDead(IsPlayerDead());
 g_VRStereo.UpdateInput();
 ```
+
+The `ConsumeMenuLayoutChanged()` block keeps the options/menu tree laid out for
+the small VR virtual screen: the menu is created before `g_VRStereo.Init` (so
+its VarTracks aren't ready at menu-init time), and `UpdateBridge()` flags when
+the headset becomes available; when the flag is set we re-run the menu's
+`ScreenDimsChanged()` so it picks up `g_VRStereo.GetMenuLayoutSize()`. See
+`Docs/BUGS_TO_FIX.md` #5.
 
 The middle three lines let the VR module know whether we are actually playing (so
 it takes over gameplay input), whether the player is dead (so the left trigger
@@ -219,8 +233,13 @@ at the end of the function.
 Add:
 
 ```cpp
-g_VRStereo.UpdateBody(hRealObj, (int)PlayerModeToModelID(m_nPlayerMode), DTRUE, DFALSE);
+g_VRStereo.UpdateBody(hRealObj, (int)PlayerModeToModelID(m_nPlayerMode), DTRUE, g_VRStereo.IsCrouchOn());
 ```
+
+The last argument is the mod's crouch state (`IsCrouchOn()`), so the VR body
+plays its crouch animation while the crouch controls are active. Shogo has no
+on-foot crouch physics, so this is body feedback only. See `Docs/BUGS_TO_FIX.md`
+#20.
 
 ---
 
@@ -465,4 +484,48 @@ g_VRStereo.SetLevelLoaded();
 ```
 
 See `Docs/BUGS_TO_FIX.md` #16.
+
+---
+
+## 19. Screen tint -> VR flash (`UpdateScreenTint`, `ClearScreenTint`, `HandleMPChangeLevel`)
+
+**Part of:** `CRiotClientShell::UpdateScreenTint()` (pristine line 3440),
+`CRiotClientShell::ClearScreenTint()` (pristine line 3493), and the tint reset
+inside `CRiotClientShell::HandleMPChangeLevel()` (pristine line 9329).
+
+The hurt/explosion/pickup "screen flash" is this shell tint, applied with
+`pClientDE->SetCameraLightAdd()`. Under the stereo render the engine's light-add
+flash comes out as a broken full-screen quad, so while VR is active we hand the
+tint colour to the mod and it draws a clean per-eye edge vignette instead. See
+`Docs/BUGS_TO_FIX.md` #28.
+
+In `UpdateScreenTint()`, split the early-out so the mod flash is cleared when no
+tint is active, then branch the final light-add. Our code:
+
+```cpp
+	if (!m_bTintScreen)
+	{
+		g_VRStereo.ClearScreenFlash();
+		return;
+	}
+```
+
+and, where the function ends:
+
+```cpp
+	if (g_VRStereo.IsActive())
+		g_VRStereo.SetScreenFlash(vLightAdd.x, vLightAdd.y, vLightAdd.z);
+	else
+		pClientDE->SetCameraLightAdd(m_hCamera, &vLightAdd);
+```
+
+`ClearScreenTint()` gains (our code), before its existing `m_bTintScreen` block:
+
+```cpp
+	g_VRStereo.ClearScreenFlash();
+```
+
+and `HandleMPChangeLevel()` gains the same line in its "Clear screen tint"
+section. Leave every other original line (the ramp maths, the intersection test,
+the non-VR `SetCameraLightAdd` calls) unchanged.
 

@@ -431,7 +431,6 @@ DDWORD CXrApiUDP::ButtonBits()
 	if (XB(0))			b |= SHOGOVR_BTN_JUMP;			// left grip - jump (regular)
 	if (XB(10))			b |= SHOGOVR_BTN_VIEWTOGGLE;	// A - first/third person view
 	if (XB(11))			b |= SHOGOVR_BTN_TRANSFORM;		// B - transform vehicle/mech
-	if (XB(9))			b |= SHOGOVR_BTN_ZOOM;			// Y - weapon zoom
 	if (XB(8))			b |= SHOGOVR_BTN_CROUCH;		// X - crouch toggle
 	if (XB(2))			b |= SHOGOVR_BTN_CROUCH_HOLD;	// left stick click - crouch (held)
 	if (XB(7))			b |= SHOGOVR_BTN_LEFT_TRIGGER;	// left trigger - F9 (quick load) when dead

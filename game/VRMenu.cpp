@@ -27,9 +27,9 @@
 #define VRS_TOGGLE		2
 #define VRS_ACTION		3
 
-#define VRM_RECENTER	25
-#define VRM_DEFAULTS	26
-#define VRM_BACK		27
+#define VRM_RECENTER	4
+#define VRM_DEFAULTS	5
+#define VRM_BACK		6
 
 struct VRMenuSetting
 {
@@ -45,34 +45,16 @@ struct VRMenuSetting
 	float		fChoice[6];
 };
 
-// Same settings and defaults as the desktop "Shogo VR Settings" window.
+// Trimmed to a short list (2026-10-13, #30); the removed rows are pinned to
+// fixed defaults in the CVRStereo VarTrack Init calls / the bridge's own
+// defaults.  Same settings and defaults as the desktop "Shogo VR Settings"
+// window where a row still exists.
 static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 {
 	{ "dominant hand",			"Controls",	"LeftHanded",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "right-handed", "left-handed" }, { 0, 1 } },
-	{ "aim with",				"Game",		"VRAimMode",		VRS_CHOICE,	1,		0, 0, 0, 1,			"",			2, { "gun hand", "head" }, { 1, 0 } },
-	{ "two-handed aiming",		"Game",		"VRTwoHand",		VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
-	{ "hand roll flip",			"Game",		"VRHandFlip",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "flipped", "as reported" }, { 0, 1 } },
-	{ "walk towards",			"Game",		"VRMoveDir",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			3, { "gun direction", "where you look", "other hand" }, { 0, 1, 2 } },
-	{ "turning",				"Game",		"VRSnapTurn",		VRS_CHOICE,	45,		0, 0, 0, 1,			"",			6, { "snap 15 deg", "snap 30 deg", "snap 45 deg", "snap 60 deg", "snap 90 deg", "smooth" }, { 15, 30, 45, 60, 90, 0 } },
+	{ "hand roll flip",			"Game",		"VRHandFlip",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "off", "on" }, { 0, 1 } },
+	{ "turning",				"Game",		"VRSnapTurn",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			6, { "snap 15 deg", "snap 30 deg", "snap 45 deg", "snap 60 deg", "snap 90 deg", "smooth" }, { 15, 30, 45, 60, 90, 0 } },
 	{ "smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },
-	{ "comfort vignette",		"Comfort",	"Vignette",			VRS_RANGE,	0,		0, 1, 0.1f, 100,	"%",		0, { 0 }, { 0 } },
-	{ "lean with head (6dof)",	"Game",		"VRHeadPosition",	VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
-	{ "stereo depth",			"Game",		"VRIPD",			VRS_RANGE,	64,		50, 80, 1, 1,		" mm",		0, { 0 }, { 0 } },
-	{ "aim helper",				"Game",		"VRAimStyle",		VRS_CHOICE,	3,		0, 0, 0, 1,			"",			4, { "laser", "dot", "reticle", "none" }, { 0, 1, 2, 3 } },
-	{ "game crosshair",			"Game",		"VRGameCrosshair",	VRS_TOGGLE,	0,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
-	{ "show body",				"Game",		"VRBody",			VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
-	{ "body arms",				"Game",		"VRBodyArms",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "hidden", "shown" }, { 0, 1 } },
-	{ "gun model",				"Game",		"VRGunModel",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "first person (detailed)", "third person (simple)" }, { 0, 1 } },
-	{ "gun arms",				"Game",		"VRGunArms",		VRS_CHOICE,	1,		0, 0, 0, 1,			"",			2, { "hidden", "shown" }, { 0, 1 } },
-	{ "easy ladders",			"Game",		"VREasyLadders",	VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
-	{ "hud width",				"Game",		"VRHudWidth",		VRS_RANGE,	60,		30, 110, 5, 1,		" deg",		0, { 0 }, { 0 } },
-	{ "hud distance",			"Game",		"VRHudDepth",		VRS_RANGE,	3.5f,	1, 10, 0.5f, 1,		" m",		0, { 0 }, { 0 } },
-	{ "sharp hud panel",		"Game",		"VRHudStrip",		VRS_CHOICE,	-1,		0, 0, 0, 1,			"",			3, { "automatic", "always", "never" }, { -1, 1, 0 } },
-	{ "menu screen size",		"Game",		"VRMenuWidth",		VRS_RANGE,	80,		40, 140, 5, 1,		" deg",		0, { 0 }, { 0 } },
-	{ "gun size on foot",		"Game",		"VRGunScale",		VRS_RANGE,	1.5f,	0.5f, 3, 0.1f, 1,	"x",		0, { 0 }, { 0 } },
-	{ "gun size in mech",		"Game",		"VRGunScaleMCA",	VRS_RANGE,	1,		0.5f, 3, 0.1f, 1,	"x",		0, { 0 }, { 0 } },
-	{ "sharpening",				"Picture",	"Sharpen",			VRS_RANGE,	0.5f,	0, 1, 0.05f, 100,	"%",		0, { 0 }, { 0 } },
-	{ "upscaling",				"Picture",	"Upscale",			VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
 	{ "recentre view",			"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "back",					"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },

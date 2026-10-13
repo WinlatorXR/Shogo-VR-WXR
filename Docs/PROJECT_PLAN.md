@@ -341,12 +341,15 @@ and adding a compile-time guard in `game/VRMenu.h`
 STATUS (device run, 10-11 Oct 2026): the port **has now run on the target** - Meta
 Quest 3 via WinlatorXR, launched from the custom `ShogoVR.exe` (launcher-xr), with
 the game at **2800x1400 SBS** (1400/eye). The on-device sessions exposed a set of
-comfort / render / input issues; those are now logged, root-caused and (mostly)
-fixed in `Docs/BUGS_TO_FIX.md` (#1-#12). In short: head roll (#1), hand roll
-(#2/#8), the whole controller input path (#3), fire (#4) and the stale-data hang
-(#9) are fixed in code; the intro splash/movies are drawn per-eye (#10, movies
-confirmed on device); left-stick movement is fixed in code (#11); still open are
-the menu sizing/centring (#5/#6), supersampling (#7) and the loading screen (#12).
+comfort / render / input issues; those are now logged, root-caused and mostly fixed
+in `Docs/BUGS_TO_FIX.md` (#1-#34). As of the 13 Oct 2026 headset pass the original
+batch is closed - head roll (#1), hand roll (#2/#8), the controller input path (#3),
+fire (#4), menu sizing/centring (#5/#6), the stale-data hang (#9), the stereo
+intro splash/movies (#10), left-stick movement (#11), render resolution (#13),
+crosshair default (#14), the control layout (#15), respawn-on-death (#16) and the
+face-button leak (#17) all verified - while the later 13 Oct items (#12, #19-#34)
+are the current work; supersampling (#7) is dropped and #18 folds into the #19 zoom
+removal.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -372,7 +375,7 @@ issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
 Progress: **Phases 0-5 are code-complete and the port has now run on the target**
 (Meta Quest 3 via WinlatorXR, launched from `ShogoVR.exe`, 2800x1400 SBS). The
 10-11 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
-that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#18)** - that file,
+that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#34)** - that file,
 not the phase statuses above, is the current source of truth. Most of those fixes
 are in code and await the next device pass; `#4` (fire) and `#9` (sync hold) were
 already verified on the desktop with the XrApi UDP Tester.
@@ -415,18 +418,74 @@ The 11 Oct 2026 session added six more in-code fixes (all awaiting a device pass
 This brings the tracked ShogoSource notes to **eight** files
 (`ShogoSourceModifications/` now also documents `PlayerStats.cpp`).
 
+The 12 Oct 2026 session added a fresh device bug list (`Docs/BUGS_TO_FIX.md`,
+now #1-#34) and worked several of them in code; the 13 Oct 2026 headset pass
+confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out the
+#19 zoom approach, while re-opening the camera half of #20 and #28:
+
+- **#19 weapon zoom (was a release blocker) - removed.** The pin-FOV half is kept
+  (`VRStereo.cpp` `RenderStereo()` pins the eye FOV to the headset base and leaves
+  the eye separation at the full IPD, so zoom can no longer change the presented
+  scale or the reported frame FOV - the narrow FOV had made the runtime present a
+  tiny centre image that could stick). The **scope-cursor overlay failed on
+  device**, so zoom is being removed for now: drop the `ZOOM` mapping and the
+  Left-Y toggle and delete `DrawScopeOverlay()` / `m_bScoped`. True magnification
+  needs the offscreen second pass if it is ever wanted.
+- **#5 menu virtual layout (finished)** - `VRStereo.cpp` `ComputeLayout()` sets
+  `m_bMenuLayoutDirty` when the menu virtual size changes and `UpdateBridge()`
+  sets it on the bridge-alive transition; `GetMenuLayoutSize()` is implemented;
+  `End2D()` clears `m_bVirtual2D`; `Hook_GetSurfaceDims` substitutes the virtual
+  size for the HUD *and* menu passes. On the ShogoSource side,
+  `CRiotMenu::ScreenDimsChanged()` now asks `g_VRStereo.GetMenuLayoutSize()`
+  (new prose note `RiotMenu.cpp.md`) and `RiotClientShell::Update()` re-runs it
+  when `ConsumeMenuLayoutChanged()` fires (edit 7, `RiotClientShell.cpp.md`).
+  Menus now lay out on a 640x480 virtual canvas that the per-eye xform scales up
+  into the panel. **Verified on device 13 Oct** - menu text is readable.
+- **#20 crouch (body feedback)** - new `CVRStereo::IsCrouchOn()` returns the
+  same crouch state `VRCommandOn(DUCK)` uses (the `m_bCrouchOn` toggle or
+  `SHOGOVR_BTN_CROUCH_HOLD` held). `RiotClientShell.cpp`
+  `UpdateServerPlayerModel()` now passes it into `g_VRStereo.UpdateBody(...)`, so
+  the VR body plays its crouch animation while crouching. The 13 Oct device pass
+  confirmed the animation but showed the **camera never moves**, so #20 is back to
+  **In progress** - the real fix is a mod-side eye-height offset while crouched.
+  The body showing in third-person / cutscene views moved to #21.
+- **#28 hurt / explosion flash** - the shell now hands the tint colour to the mod
+  (`g_VRStereo.SetScreenFlash`) instead of using the engine camera light-add (whose
+  full-screen quad broke under the stereo render), and the mod draws a clean
+  per-eye **edge vignette** (`DrawScreenFlash`) in the HUD pass. Opaque nested
+  frames, since the 2D API has no alpha; the centre of vision stays clear.
+  Documented as edit 19 in `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`.
+  **Reopened 13 Oct:** the vignette does not appear on device at all (no hurt/explosion
+  feedback) - the tint isn't reaching the draw, so instrument the
+  `SetScreenFlash`/`DrawScreenFlash` path and re-test.
+
+This brings the tracked ShogoSource notes to **nine** files
+(`ShogoSourceModifications/` now also documents `RiotMenu.cpp`).
+
 The immediate next actions are:
 
-1. **Re-run on the target and verify the in-code fixes.** Already verified on
-   device: head roll (#1), hands (#2/#8), controller input + no kb/mouse leakage
-   (#3), fire (#4), intro movies/splash (#10). Still to verify: left-stick
-   movement (#11), the new render resolution (#13), the crosshair default (#14),
-   the revised control layout (#15), the auto-quicksave/quickload-on-death flow
-   (#16), the face-button key leak fix (#17) and Left-Y weapon zoom (#18).
-2. **Fix the open render issues** (all in-headset 2D/SBS sizing): menu size (#5),
-   menu centring at 2800x1400 (#6), supersampling (#7) and the loading screen
-   (#12).
-3. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
+1. **Verification is done for the last in-code batch.** Confirmed on device (13 Oct):
+   head roll (#1), hands (#2/#8), controller input + no kb/mouse leakage (#3), fire
+   (#4), menu centring (#6), the #5 menu virtual layout, intro splash/movies (#10),
+   left-stick movement (#11), render resolution (#13), crosshair default (#14), the
+   revised control layout (#15), the auto-quicksave / quickload-on-death flow (#16)
+   and the face-button leak fix (#17). Nothing is left awaiting a first device pass.
+2. **Do the clean-up pass:** remove zoom (#19, which also drops the #18 Left-Y
+   re-select) and trim the in-game VR menu to the short list with fixed defaults
+   (#30). #7 (supersampling) is dropped and not pursued.
+3. **Fix the 13 Oct regressions / misses** (all reported on device): the hurt /
+   explosion flash never shows (#28, reopened), crouch still doesn't move the VR
+   camera (#20), the loading / bumper screen is still mono with unreadable text
+   (#12 - fix like #5), `B` doesn't toggle mech walking / vehicle mode because the raw
+   A/B keystrokes still leak (#31 - block A/B everywhere except the pause menu, see
+   #17), jump intermittently stops working (#32), an in-level area load doesn't
+   re-trigger the autosave (#33), the weapon model sits lower than its shot origin
+   (#34, aiming is off), and the left/right stick deadzone is still not applied (#22).
+4. **Work the remaining items** (body shown in third-person / cutscenes #21,
+   right A/B taps #23, on-foot autosave #24, autosave re-arm #25, intro-video
+   y-offset #26, shot-vs-model origin #27, muzzle flash centred on the view #29) -
+   one at a time, logging each in `Docs/BUGS_TO_FIX.md` as it lands.
+5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource
    change.

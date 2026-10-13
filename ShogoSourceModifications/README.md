@@ -29,6 +29,7 @@ ShogoSourceModifications/
     OptionsMenu.cpp.md
     PlayerStats.cpp.md
     RiotClientShell.cpp.md
+    RiotMenu.cpp.md
     RiotClientShell.h.md
     Sparam.cpp.md
     WeaponModel.cpp.md
@@ -42,7 +43,8 @@ ShogoSourceModifications/
 | `ClientShellDLL/OptionsMenu.h`   | Adds the `CVRMenu` sub-menu member and its lifecycle calls. |
 | `ClientShellDLL/OptionsMenu.cpp` | Adds the "vr" item to the Options menu and routes to the VR sub-menu. |
 | `ClientShellDLL/PlayerStats.cpp` | Brackets the two crosshair draw sites with `g_VRStereo.BeginCrosshair()`/`EndCrosshair()` so the mod can hide the game crosshair by default and otherwise place it at aim depth. |
-| `ClientShellDLL/RiotClientShell.cpp` | Mounts `CVRStereo`/`g_VRStereo`: init/term/update, console `VRRecenter`, head tracking, aim depth, mech mode, player body, the stereo-aware `RenderCamera`, the per-eye menu/pause render, the right-half splash, the per-eye intro-movie clone, and the dead-state feed. |
+| `ClientShellDLL/RiotClientShell.cpp` | Mounts `CVRStereo`/`g_VRStereo`: init/term/update, console `VRRecenter`, head tracking, aim depth, mech mode, player body + crouch state, the stereo-aware `RenderCamera`, the per-eye menu/pause render, the right-half splash, the per-eye intro-movie clone, the dead-state feed, the VR menu-size re-layout poll, and the per-eye hurt/explosion flash (which replaces the engine camera light-add). |
+| `ClientShellDLL/RiotMenu.cpp`    | Asks `g_VRStereo` for the virtual menu layout size in `ScreenDimsChanged()` so the options/pause tree lays out legibly in the headset. |
 | `ClientShellDLL/RiotClientShell.h`   | Declares the `m_bMovieShiftRight` member used by the intro-movie clone. |
 | `ClientShellDLL/WeaponModel.cpp` | Lets `g_VRStereo` place and scale the first-person weapon in the tracked hand. |
 | `ClientShellDLL/Sparam.cpp`      | `const char*` build fixes for the modern compiler (not VR-specific). |
@@ -73,7 +75,7 @@ the DLL you also need the rest of this repository:
 Steps:
 
 1. Put your own Shogo v2.2 source in `ShogoSource/` (the folder the project
-   expects) and apply the eight notes above.
+   expects) and apply the nine notes above.
 2. Build `build/CShell.vcxproj` with Visual Studio 2022 (Platform Toolset v143),
    `Win32`. The output is `build\out\CShell.dll`.
 3. Deploy the DLL into a `ShogoVR\` overlay folder and launch Shogo with the
