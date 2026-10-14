@@ -233,13 +233,18 @@ at the end of the function.
 Add:
 
 ```cpp
-g_VRStereo.UpdateBody(hRealObj, (int)PlayerModeToModelID(m_nPlayerMode), DTRUE, g_VRStereo.IsCrouchOn());
+DBOOL bShowVRBody = (m_playerCamera.IsFirstPerson() && !m_bUsingExternalCamera &&
+					 !IsPlayerDead() && !IsSpectatorMode());
+g_VRStereo.UpdateBody(hRealObj, (int)PlayerModeToModelID(m_nPlayerMode), bShowVRBody, g_VRStereo.IsCrouchOn());
 ```
 
-The last argument is the mod's crouch state (`IsCrouchOn()`), so the VR body
-plays its crouch animation while the crouch controls are active. Shogo has no
-on-foot crouch physics, so this is body feedback only. See `Docs/BUGS_TO_FIX.md`
-#20.
+`bShowVRBody` is false for the **third-person (chase)** view, the **external /
+cutscene** camera and **death / spectator** — in all of those the game renders its
+own player model, so the mod's copy stays hidden and only one body shows. The
+mod body is drawn only in normal first-person gameplay. The last argument is the
+mod's crouch state (`IsCrouchOn()`), so the VR body plays its crouch animation
+while the crouch controls are active (Shogo has no on-foot crouch physics, so this
+is body feedback only). See `Docs/BUGS_TO_FIX.md` #21 and #20.
 
 ---
 

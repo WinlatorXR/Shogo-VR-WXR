@@ -19,7 +19,8 @@ hand - user-confirmed) and **#36** (Right B transform). #4 and #9 were verified 
 XrApi UDP Tester rather than in the headset. **Removed / cancelled:** #7 (supersampling not pursued),
 #18 (zoom re-select, folded into #19), #24/#25/#33 (the autosave family - players can save/load
 manually if they hit an issue instead) and #32 (jump - appears fixed on device). **Fixed in code,
-awaiting a device pass:** none - the tracker is down to the open items listed just below.
+awaiting a device pass:** #21 (the VR body is now hidden in third-person / cutscene / death views;
+its *missing geometry* sub-item is still open).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -43,7 +44,7 @@ awaiting a device pass:** none - the tracker is down to the open items listed ju
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
 | 20 | Crouch doesn't lower the VR camera | In progress (body crouch works; camera not lowered) |
-| 21 | Body shown in 3rd-person / cutscenes | Open (confirmed on device) |
+| 21 | Body shown in 3rd-person / cutscenes | Fixed in code (2026-10-14) - needs a device pass (missing geometry still open) |
 | 22 | Left-stick deadzone | Open (still not applied on device) |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
@@ -68,9 +69,11 @@ Everything else in the table below is fixed/verified or removed. The **only open
   eyes; fix to mirror #5).
 - **#20 - Crouch doesn't lower the VR camera** (the body crouch animation works; the eye height
   never moves).
-- **#21 - The VR body shows in third-person / cutscene views** (and is missing geometry).
 - **#22 - Left-stick deadzone** still not applied, and not split between strafe and forward/back.
 - **#26 - Intro video sits slightly too high** (move it down ~1/8).
+
+**Fixed in code, awaiting a device pass:** #21 - the VR body is now hidden in third-person / cutscene
+/ death views (the game's own model is shown there); its **missing-geometry** sub-item is still open.
 
 ---
 
@@ -775,7 +778,8 @@ Everything else in the table below is fixed/verified or removed. The **only open
 
 ## 21. The VR body shows in third-person / cutscene views (and is missing geometry)
 
-- **Status:** Open (confirmed on device 2026-10-13)
+- **Status:** **Fixed in code (2026-10-14)** - needs a device pass to confirm. The *missing geometry*
+  half is still open.
 - **Priority:** Medium (visual; third-person cutscenes read as "two mechs / two players")
 - **Observed:**
   - (device, 2026-10-12) during cutscenes two MCA mechs / player bodies appear in third person.
@@ -783,18 +787,22 @@ Everything else in the table below is fixed/verified or removed. The **only open
     cutscene views, but it does; the user also noted the body is missing some geometry ("the extra
     bits").
 - **Root cause:** the mod draws its own client-side copy of the player body for VR
-  (`CVRStereo::UpdateBody`, `game/VRStereo.cpp:3383`), and the game's cutscene / third-person
-  camera (`m_bUsingExternalCamera`) also renders the real player model. `UpdateServerPlayerModel()`
-  always passes `bShow = DTRUE` (`ShogoSource/ClientShellDLL/RiotClientShell.cpp:8179`); the mod
-  only suppresses its copy for `!m_bVehicle` (`game/VRStereo.cpp:3388-3389`), so whenever the game
-  is on an external / third-person camera the mod copy is still drawn on top of the game's own
+  (`CVRStereo::UpdateBody`, `game/VRStereo.cpp:3580`), and the game's cutscene / third-person camera
+  also renders the real player model. `UpdateServerPlayerModel()` always passed `bShow = DTRUE`, so
+  whenever the game was on a non-first-person camera the mod copy was drawn on top of the game's own
   model.
-- **Fix direction:** hide the mod's body whenever the game is driving a non-first-person camera
-  - pass `bShow = !m_bUsingExternalCamera` (and/or suppress for `GS_MOVIES` and the chase view) at
-  the `UpdateBody` call site, so the game's own model is the only one shown. Keep the mod body for
-  normal first-person gameplay. Separately, check why the mod's body is missing geometry parts.
-- **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp:2809, 2891, 2984`
-  (`m_bUsingExternalCamera`), `:8179`; `game/VRStereo.cpp:3378, 3383-3395` (`HideBody`).
+- **Fix applied (2026-10-14):** the `UpdateBody()` call site now passes
+  `bShow = m_playerCamera.IsFirstPerson() && !m_bUsingExternalCamera && !IsPlayerDead() &&
+  !IsSpectatorMode()` (edit 11, `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`).
+  The mod body is therefore hidden for the **third-person (chase)**, **external / cutscene** and
+  **death / spectator** views, where the game's own model is the one shown; it is still drawn in
+  normal first-person gameplay (where the game hides its model). Build clean (712704 bytes),
+  deployed; needs a device pass.
+- **Still open:** the mod's first-person body is missing some geometry ("the extra bits") - not
+  addressed by this fix; revisit if the user wants it.
+- **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp` (`m_bUsingExternalCamera`,
+  `IsPlayerDead`, `IsSpectatorMode`, `UpdateServerPlayerModel`);
+  `game/VRStereo.cpp:3564,3580` (`HideBody` / `UpdateBody`).
 
 ---
 

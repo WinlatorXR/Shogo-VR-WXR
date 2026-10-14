@@ -354,8 +354,9 @@ weapon model (#34) and dominant hand (#35) are all verified. Supersampling (#7) 
 dropped, #18 folds into the #19 zoom removal, and the autosave family (#24/#25/#33)
 plus the intermittent jump flag (#32) are **removed/cancelled** - players save/load
 manually. The **only open items left** are #12 (loading/bumper/credits screens mono),
-#20 (crouch camera), #21 (body in third-person), #22 (stick deadzone) and #26
-(intro-video y-offset).
+#20 (crouch camera), #22 (stick deadzone) and #26 (intro-video y-offset); #21 (the VR
+body showing in third-person / cutscene / death views) is **fixed in code (14 Oct)**,
+awaiting a device pass.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -507,6 +508,13 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   hand poses (so the gun models follow the other controller) and swaps **only** the trigger/grip
   actions - left trigger fires, left grip double-jumps - leaving the sticks and face buttons alone.
   Build clean; **verified on device (2026-10-14, user-confirmed)**.
+- **#21 VR body hidden outside first-person (fixed in code, 14 Oct)** - `UpdateServerPlayerModel()`
+  now passes `bShow = m_playerCamera.IsFirstPerson() && !m_bUsingExternalCamera && !IsPlayerDead() &&
+  !IsSpectatorMode()` to `g_VRStereo.UpdateBody(...)`, so the mod's copy of the player body is drawn
+  only in normal first-person gameplay. In third-person (chase), cutscene (external camera) and
+  death / spectator views the game's own model is the one shown, so the "two mechs / two players"
+  overlap is gone. Build clean; awaiting a device pass. (The mod body's missing geometry is still
+  open.)
 
 This brings the tracked ShogoSource notes to **nine** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`).
@@ -534,9 +542,8 @@ The immediate next actions are:
    single B press transforms both ways.
 4. **Work the remaining open items one at a time**, logging each in
    `Docs/BUGS_TO_FIX.md`: the loading / bumper / **credits** screen stereo layout
-   (#12 - fix like #5), the crouch camera eye-height (#20), the body showing in
-   third-person / cutscene views (#21), the per-axis left-stick deadzone (#22) and
-   the intro-video y-offset (#26).
+   (#12 - fix like #5), the crouch camera eye-height (#20), the per-axis left-stick
+   deadzone (#22) and the intro-video y-offset (#26).
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource
