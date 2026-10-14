@@ -338,18 +338,24 @@ and adding a compile-time guard in `game/VRMenu.h`
 (`#if VRMENU_ITEMS > MAX_GENERIC_ITEMS`). Build clean, deployed, smoke test ok
 (102 modules); needs a repeated level-load check.
 
-STATUS (device run, 10-11 Oct 2026): the port **has now run on the target** - Meta
+STATUS (device run, 10-14 Oct 2026): the port **has run on the target** - Meta
 Quest 3 via WinlatorXR, launched from the custom `ShogoVR.exe` (launcher-xr), with
 the game at **2800x1400 SBS** (1400/eye). The on-device sessions exposed a set of
-comfort / render / input issues; those are now logged, root-caused and mostly fixed
-in `Docs/BUGS_TO_FIX.md` (#1-#34). As of the 13 Oct 2026 headset pass the original
-batch is closed - head roll (#1), hand roll (#2/#8), the controller input path (#3),
-fire (#4), menu sizing/centring (#5/#6), the stale-data hang (#9), the stereo
-intro splash/movies (#10), left-stick movement (#11), render resolution (#13),
-crosshair default (#14), the control layout (#15), respawn-on-death (#16) and the
-face-button leak (#17) all verified - while the later 13 Oct items (#12, #19-#34)
-are the current work; supersampling (#7) is dropped and #18 folds into the #19 zoom
-removal.
+comfort / render / input issues; those are logged, root-caused and almost all fixed
+in `Docs/BUGS_TO_FIX.md` (#1-#36). As of the 14 Oct 2026 headset pass the list is
+nearly closed - the original 10-11 Oct batch (head roll #1, hand roll #2/#8, the
+controller input path #3, fire #4, menu sizing/centring #5/#6, the stale-data hang
+#9, the stereo splash/movies #10, left-stick movement #11, render resolution #13,
+crosshair default #14, the control layout #15, respawn-on-death #16, the face-button
+leak #17) plus the later zoom removal (#19), the Right-A/B view + transform toggles
+(#23/#31/#36), shots-vs-model (#27), the hurt / explosion flash (#28), the muzzle
+flash at the visible gun (#29), the trimmed VR menu (#30), the lower-than-origin
+weapon model (#34) and dominant hand (#35) are all verified. Supersampling (#7) is
+dropped, #18 folds into the #19 zoom removal, and the autosave family (#24/#25/#33)
+plus the intermittent jump flag (#32) are **removed/cancelled** - players save/load
+manually. The **only open items left** are #12 (loading/bumper/credits screens mono),
+#20 (crouch camera), #21 (body in third-person), #22 (stick deadzone) and #26
+(intro-video y-offset).
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -372,15 +378,16 @@ issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
 
 ## 6. Where we are, and the immediate next action
 
-Progress: **Phases 0-5 are code-complete and the port has now run on the target**
+Progress: **Phases 0-5 are code-complete and the port has run on the target**
 (Meta Quest 3 via WinlatorXR, launched from `ShogoVR.exe`, 2800x1400 SBS). The
-10-11 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
-that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#34)** - that file,
-not the phase statuses above, is the current source of truth. Most of those fixes
-are in code and await the next device pass; `#4` (fire) and `#9` (sync hold) were
-already verified on the desktop with the XrApi UDP Tester.
+10-13 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
+that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#36)** - that file,
+not the phase statuses above, is the current source of truth. As of the 14 Oct
+2026 pass all but five are closed; the remaining open bugs are #12, #20, #21, #22
+and #26. `#4` (fire) and `#9` (sync hold) were verified on the desktop with the
+XrApi UDP Tester.
 
-The 11 Oct 2026 session added six more in-code fixes (all awaiting a device pass):
+The 11 Oct 2026 session added six more in-code fixes (all since verified on device):
 
 - **#13 render resolution** - `launcher-xr\ShogoVR.cpp` now passes
   `+screenwidth W +screenheight H` from the desktop resolution (and `build.cmd`
@@ -409,7 +416,11 @@ The 11 Oct 2026 session added six more in-code fixes (all awaiting a device pass
 - **#17 face-button key leak** - WinlatorXR also sends the controller face
   buttons as the keyboard letters X/Y/B/A; `VRStereo.cpp`
   `ShouldSwallowFaceKey()` plus `RiotClientShell.cpp` `OnKeyDown`/`OnKeyUp`
-  (`ClearInput()` + early return) drop them while playing and alive.
+  (`ClearInput()` + early return) drop them while playing and alive. **#36
+  (14 Oct):** `ClearInput()` is now skipped for the letter `B` - it cleared the
+  *whole* input state and cancelled the `VehicleModeToggle` key the same button
+  injects (`V`), so Right B needed repeated taps; the leaked `B`-driven
+  `ChaseView` is already ignored by the #31 `OnCommandOn` guard.
 - **#18 Left-Y weapon zoom (removed)** - no zoom command exists; zoom was toggled
   by re-selecting the equipped weapon (`VRStereo.cpp` cached the held weapon id in
   `UpdateHeldGun` and `UpdateInput` tapped `GetCommandId(...)`). This is removed with
@@ -419,7 +430,7 @@ This brings the tracked ShogoSource notes to **eight** files
 (`ShogoSourceModifications/` now also documents `PlayerStats.cpp`).
 
 The 12 Oct 2026 session added a fresh device bug list (`Docs/BUGS_TO_FIX.md`,
-now #1-#34) and worked several of them in code; the 13 Oct 2026 headset pass
+now #1-#36) and worked several of them in code; the 13 Oct 2026 headset pass
 confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out the
 #19 zoom approach, while re-opening the camera half of #20 and #28:
 
@@ -477,7 +488,8 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   (`UpdateFlash`). `m_vFlashPos` - the **shot origin** sent in `MID_WEAPON_FIRE` - is left alone, so
   aiming is not disturbed; when VR isn't posing the gun by hand the mod returns `DFALSE` and the draw
   falls back to `m_vFlashPos`. Documented as edit 3 in
-  `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`. Build clean; awaiting a device pass.
+  `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`. Build clean; **verified on device
+  (2026-10-14)**.
   **Follow-up (13 Oct):** the on-foot **dual pistols** (Colt 45, `GUN_COLT45_ID`) fire from two
   barrels alternately (`W_FIRED` / `W_FIRED2`), but the helper only knows the one `W_FIRED` muzzle,
   so it pinned both flashes to the same barrel. `GetMuzzleFlashWorld()` now returns `DFALSE` for that
@@ -488,48 +500,43 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   speed, recentre view, reset to defaults, back. The removed options are pinned to
   their listed defaults, correcting `VRSnapTurn` -> smooth, `VRMoveDir` -> where you
   look, `VRTwoHand` -> off and `VRGunScaleMCA` -> 1.5x in the `CVRStereo` VarTrack
-  `Init` calls. Build clean; awaiting a device pass.
+  `Init` calls. Build clean; **verified on device (2026-10-14)**.
 - **#35 dominant hand now works** - `Controls/LeftHanded` was read only by the PCVR bridge, so on
   the WinlatorXR path the toggle was inert. `CVRStereo` now reads it itself
   (`LoadSettingsFile`, logged as `VR: dominant hand left/right`) and, when left-handed, swaps the two
   hand poses (so the gun models follow the other controller) and swaps **only** the trigger/grip
   actions - left trigger fires, left grip double-jumps - leaving the sticks and face buttons alone.
-  Build clean; awaiting a device pass.
+  Build clean; **verified on device (2026-10-14, user-confirmed)**.
 
 This brings the tracked ShogoSource notes to **nine** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`).
 
 The immediate next actions are:
 
-1. **Verification is done for the last in-code batch.** Confirmed on device (13 Oct):
-   head roll (#1), hands (#2/#8), controller input + no kb/mouse leakage (#3), fire
-   (#4), menu centring (#6), the #5 menu virtual layout, intro splash/movies (#10),
-   left-stick movement (#11), render resolution (#13), crosshair default (#14), the
-   revised control layout (#15), the auto-quicksave / quickload-on-death flow (#16)
-   and the face-button leak fix (#17).
-2. **Clean-up pass - done in code, part-verified.** Zoom is removed (#19, which also
-   drops the #18 Left-Y re-select), the in-game VR menu is trimmed to the 7-row short
-   list with the removed options pinned to their defaults (#30), the hurt / explosion
-   flash is re-drawn on the post-render path (#28) and is now **verified on device**
-   (13 Oct), and the muzzle flash is moved to the visible gun's muzzle (#29). #7
-   (supersampling) is dropped and not pursued.
-3. **Fix the remaining 13 Oct regressions / misses** (all reported on device): crouch
-   still doesn't move the VR camera (#20), the loading / bumper screen is still mono
-   with unreadable text (#12 - fix like #5), jump intermittently stops working (#32),
-   an in-level area load doesn't re-trigger the autosave (#33), the weapon model sits
-   lower than its shot origin (#34, aiming is off), and the left/right stick deadzone
-   is still not applied (#22). **#31 is fixed in code (13 Oct):** the game binds
-   ChaseView (first/third person) to the letter `B`, so the old Right-A injection of
-   that key was swallowed while the leaked raw `B` toggled the view; Right A now
-   drives the view directly (`CVRStereo::ConsumeViewToggle` ->
-   `CRiotClientShell::SetExternalCamera`) and the leaked key-driven `ChaseView` is
-   ignored while a controller is live in gameplay. #23's view-toggle half is fixed
-   with it. **#35 (dominant hand) is fixed in code (13 Oct):** left-handed now swaps the
-   two hand poses and the trigger/grip actions, read from `Controls/LeftHanded` by the game.
-4. **Work the remaining items** (body shown in third-person / cutscenes #21,
-   on-foot autosave #24, autosave re-arm #25, intro-video y-offset #26,
-   shot-vs-model origin #27) - one at a time, logging each in `Docs/BUGS_TO_FIX.md`
-   as it lands.
+1. **Device verification is up to date.** The fixed set is now verified on device
+   (13-14 Oct): the 10-11 Oct batch (#1-#6, #8-#11, #13-#17), the zoom removal
+   (#19), shots-vs-model (#27), the hurt / explosion flash (#28), the muzzle flash
+   at the visible gun (#29), the trimmed VR menu (#30), the lower-than-origin weapon
+   model (#34), dominant hand (#35) and the Right-A/B view + transform toggles
+   (#23/#31/#36, B confirmed 14 Oct).
+2. **Clean-up pass - verified.** Zoom is removed (#19, which also drops the #18
+   Left-Y re-select), the in-game VR menu is trimmed to the 7-row short list with the
+   removed options pinned to their defaults (#30), and the hurt / explosion flash is
+   re-drawn on the post-render path (#28). #7 (supersampling) is dropped and not
+   pursued.
+3. **Removals (14 Oct).** The autosave family - on-foot autosave (#24), autosave
+   re-arm (#25) and the in-level area-load autosave (#33) - is **cancelled**; the
+   owner decided players can save/load manually if they hit an issue. The
+   intermittent jump flag (#32) is **removed** as it appears fixed on device.
+   **#36 (Right B transform, 14 Oct):** the leaked face-letter `B`'s `ClearInput()`
+   was wiping the `V` key the transform injects from the same press; `ClearInput()`
+   is now skipped for `B` (the leaked `B` is already ignored by the #31 guard) and a
+   single B press transforms both ways.
+4. **Work the remaining open items one at a time**, logging each in
+   `Docs/BUGS_TO_FIX.md`: the loading / bumper / **credits** screen stereo layout
+   (#12 - fix like #5), the crouch camera eye-height (#20), the body showing in
+   third-person / cutscene views (#21), the per-axis left-stick deadzone (#22) and
+   the intro-video y-offset (#26).
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource

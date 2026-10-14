@@ -3411,6 +3411,8 @@ void CVRStereo::RequestTransform()
 	m_nTransformScan	= nScan;
 	m_bTransformExt		= bExt;
 	m_nTransformUpTick	= GetTickCount() + 150;		// long enough for the game to see it
+
+	Log("VR: transform key down (scan 0x%02X)", (unsigned)nScan);
 }
 
 void CVRStereo::ReleaseTransformKey()

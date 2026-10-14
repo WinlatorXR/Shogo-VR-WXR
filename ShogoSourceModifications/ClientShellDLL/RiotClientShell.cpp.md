@@ -449,14 +449,29 @@ becomes a command (the same trick the `GS_BUMPER` branch already uses with
 ```cpp
 if (g_VRStereo.ShouldSwallowFaceKey(key))
 {
-	pClientDE->ClearInput();
+	// Cancel the stray key so the engine doesn't act on it.  But the letter
+	// B is the game's ChaseView key: the leaked-B collision is already
+	// handled by the OnCommandOn guard (#31), and ClearInput() wipes the
+	// *whole* input state - including the vehicle-transform key the same
+	// button injects a moment later, so B needed repeated taps (#36).
+	if (key != 'B') pClientDE->ClearInput();
 	return;
 }
 ```
 
 `ShouldSwallowFaceKey` is true only while a controller is live, gameplay input
 is active and the player is alive, for `VK` `A`/`B`/`X`/`Y`. See
-`Docs/BUGS_TO_FIX.md` #17.
+`Docs/BUGS_TO_FIX.md` #17 and #36.
+
+**Why `B` is excluded from `ClearInput()`:** `ClearInput()` takes no key
+argument, so it clears the *entire* input state. Right B is the only controller
+control that both injects a key (the `VehicleModeToggle` bind, letter `V`, via
+`SendInput`) *and* arrives as a leaked face letter (`B`). When the leaked `B`'s
+`ClearInput()` landed after the mod queued `V`, it cancelled the transform
+command, so B needed repeated taps (#36). The leaked `B` no longer needs
+`ClearInput()` because the key-driven `ChaseView` is already ignored by the
+`OnCommandOn` guard (#31) and the `IsCommandOn` hook. `X` (bound to `CursorTog`)
+and `Y` keep it.
 
 ---
 

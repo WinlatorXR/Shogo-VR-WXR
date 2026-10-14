@@ -10,13 +10,16 @@ Legend: `Open` / `In progress` / `Fixed in code` (awaiting a device pass) / `Fix
 ## Status at a glance
 
 Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #16, #17**,
-**#20** (the crouch *body animation* only - the camera half is still open) and **#28** (the
-peripheral hurt/explosion flash - confirmed 2026-10-13). #4 and #9 were verified with the WinlatorXR
-XrApi UDP Tester rather than in the headset. **Removed:** #7 (supersampling not pursued) and #18
-(zoom re-select, folded into #19). **Fixed in code, awaiting a device pass:** #19 (zoom removed),
-#23 (A/B view/transform), #29 (muzzle flash moved to the visible gun's muzzle; the on-foot dual
-pistols deliberately excluded, see #29), #30 (VR menu trimmed to 7 rows) and #35 (dominant hand now
-swaps the hands and the triggers/grips).
+**#19** (zoom stays removed; the view fills normally), **#20** (the crouch *body animation* only -
+the camera half is still open), **#23/#31** (Right-A view toggle), **#27** (shots track the visible
+gun), **#28** (the peripheral hurt/explosion flash - 2026-10-13), **#29** (muzzle flash at the
+visible gun's muzzle; the on-foot dual pistols keep the game's own alternating flashes), **#30** (VR
+menu trimmed to 7 rows), **#34** (the gun no longer sits below the shot origin), **#35** (dominant
+hand - user-confirmed) and **#36** (Right B transform). #4 and #9 were verified with the WinlatorXR
+XrApi UDP Tester rather than in the headset. **Removed / cancelled:** #7 (supersampling not pursued),
+#18 (zoom re-select, folded into #19), #24/#25/#33 (the autosave family - players can save/load
+manually if they hit an issue instead) and #32 (jump - appears fixed on device). **Fixed in code,
+awaiting a device pass:** none - the tracker is down to the open items listed just below.
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -31,35 +34,43 @@ swaps the hands and the triggers/grips).
 | 9  | Game runs on when headset stalls | Fixed - verified (tester) |
 | 10 | Intro logo/movie mono | Fixed - verified (intro offset: #26) |
 | 11 | Motion-controller movement | Fixed - verified |
-| 12 | Loading screen mono | Open (confirmed; fix like #5) |
+| 12 | Loading/bumper/credits screens mono | Open (confirmed; fix like #5) |
 | 13 | Render resolution 640x480 | Fixed - verified |
 | 14 | Crosshair on by default | Fixed - verified |
-| 15 | Controller mapping | Fixed - verified (pending #22/#23/#31/#32) |
+| 15 | Controller mapping | Fixed - verified (individual controls: #22) |
 | 16 | Can't respawn when dead | Fixed - verified |
 | 17 | Face buttons leak X/Y/B/A | Fixed - verified (A/B leak: #31) |
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
-| 19 | Zoom shrinks view (blocker) | Fixed in code - zoom removed (2026-10-13) |
+| 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
 | 20 | Crouch doesn't lower the VR camera | In progress (body crouch works; camera not lowered) |
 | 21 | Body shown in 3rd-person / cutscenes | Open (confirmed on device) |
 | 22 | Left-stick deadzone | Open (still not applied on device) |
-| 23 | Right A/B intermittent/swapped | Fixed in code - A routed direct; leaked B blocked (2026-10-13) |
-| 24 | On-foot autosave | Open |
-| 25 | Autosave re-arms after load | Open |
+| 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
+| 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
+| 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
 | 26 | Intro video too high | Open |
-| 27 | Shots vs weapon model | Open |
+| 27 | Shots vs weapon model | Fixed - verified (2026-10-14) |
 | 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
-| 29 | Muzzle flash centred on the view | Fixed in code - needs device pass (2026-10-13); dual pistols excluded |
-| 30 | Trim the in-game VR menu | Fixed in code (2026-10-13) |
-| 31 | Right B toggle + A/B keystrokes leak | Fixed in code - A view toggle direct; leaked key-driven B blocked (2026-10-13) |
-| 32 | Jump intermittently stops working | Open |
-| 33 | Area load doesn't re-trigger autosave | Open |
-| 34 | Weapon model lower than shot origin | Open |
-| 35 | Left/right dominant hand does nothing | Fixed in code (2026-10-13) |
+| 29 | Muzzle flash centred on the view | Fixed - verified (2026-10-14); dual pistols excluded |
+| 30 | Trim the in-game VR menu | Fixed - verified (2026-10-14) |
+| 31 | Right B toggle + A/B keystrokes leak | Fixed - verified (2026-10-14) |
+| 32 | Jump intermittently stops working | Removed - appears fixed (2026-10-14) |
+| 33 | Area load doesn't re-trigger autosave | Removed / cancelled (2026-10-14) - manual save/load |
+| 34 | Weapon model lower than shot origin | Fixed - verified (2026-10-14) |
+| 35 | Left/right dominant hand does nothing | Fixed - verified (2026-10-14, user-confirmed) |
+| 36 | Right B (transform) needs repeated taps | Fixed - verified (2026-10-14) |
 
-#19 (zoom removed), #23 (A/B view/transform), #28 (flash on the post-render path), #29 (visible-gun
-muzzle flash; dual pistols excluded), #30 (VR menu trimmed) and #35 (dominant-hand swap) are in code
-and awaiting a headset pass; the other rows in the table are the open / in-progress work, and each
-item's own entry says what to check.
+## Open items (as of 2026-10-14)
+
+Everything else in the table below is fixed/verified or removed. The **only open bugs left** are:
+
+- **#12 - Loading / bumper / credits screens render mono** (text unreadable, split across both
+  eyes; fix to mirror #5).
+- **#20 - Crouch doesn't lower the VR camera** (the body crouch animation works; the eye height
+  never moves).
+- **#21 - The VR body shows in third-person / cutscene views** (and is missing geometry).
+- **#22 - Left-stick deadzone** still not applied, and not split between strafe and forward/back.
+- **#26 - Intro video sits slightly too high** (move it down ~1/8).
 
 ---
 
@@ -458,15 +469,17 @@ item's own entry says what to check.
 
 ---
 
-## 12. Loading screen renders mono (text unreadable, split across both eyes)
+## 12. Loading / bumper / credits screens render mono (text unreadable, split across both eyes)
 
-- **Status:** Open (re-confirmed on device 2026-10-13; fix to mirror #5)
+- **Status:** Open (re-confirmed on device 2026-10-13; the **credits screen** re-reported 2026-10-14;
+  fix to mirror #5)
 - **Priority:** Medium (same flat-2D-per-eye class as #5 / #6 / #10)
 - **Observed:** The level **loading** screen (and the bumper screen) is drawn once, centered, on
   the full SBS canvas. With SBS active the runtime reads one image, so each eye sees half of one
   picture at the seam (mono / split) instead of a per-eye copy. Reported on device 2026-10-11 and
   **again 2026-10-13**: the loading screens are 2D, so their text is unreadable, split between
-  both eyes. The user wants "a fix here similar to the menus" (#5).
+  both eyes. The user wants "a fix here similar to the menus" (#5). The **credits screen** has the
+  same problem (reported 2026-10-14).
 - **Root cause:** `CRiotClientShell::UpdateLoadingLevel()` blits `m_hLoading` /
   `m_hBumperText` / `m_hLoadingWorld` straight to the screen surface centered
   (`DrawSurfaceToSurfaceTransparent(hScreen, ..., (nScreenWidth - w) / 2, (nScreenHeight - h) / 2, ...)`).
@@ -659,8 +672,8 @@ item's own entry says what to check.
 
 ## 19. Weapon zoom shrinks the whole view to a tiny square and never restores (RELEASE BLOCKER)
 
-- **Status:** **Fixed in code (2026-10-13)** - zoom removed; needs a device pass to confirm the
-  view always fills normally (no tiny centre square, no stuck FOV).
+- **Status:** **Fixed - verified on device (2026-10-14)** - zoom stays removed; the view always fills
+  normally (no tiny centre square, no stuck FOV).
 - **Priority:** Blocker
 - **Fix applied (2026-10-13) - option 3 (remove zoom):** dropped the `ZOOM` mapping in
   `game/XrApiUDP.cpp` `ButtonBits()` and the `SHOGOVR_BTN_ZOOM` bit (both `ShogoVRShared.h`
@@ -806,7 +819,8 @@ item's own entry says what to check.
 
 ## 23. Right A (view toggle) / Right B (transform) intermittent and sometimes swapped
 
-- **Status:** **Fixed in code (2026-10-13)** - the view-toggle half; needs a device pass.
+- **Status:** **Fixed - verified on device (2026-10-14)** - the Right-A view toggle works every
+  press; the transform half was the separate #36, now verified too.
 - **Priority:** Medium (core controls feel unreliable)
 - **Resolution (2026-10-13):** the "sometimes swapped / does nothing" behaviour was the game's own
   **`B` = ChaseView** binding colliding with the face-key leak (cause 3 below). The fix is in #31:
@@ -841,7 +855,8 @@ item's own entry says what to check.
 
 ## 24. On-foot missions never auto-quicksave on level start
 
-- **Status:** Open
+- **Status:** Removed / cancelled (2026-10-14) - the owner decided players can **save/load manually**
+  if they hit an issue here, so the autosave family (#24/#25/#33) is dropped.
 - **Priority:** Medium-High (breaks the #16 death-recovery on those levels)
 - **Observed (device, 2026-10-12):** an on-foot mission did not quicksave on load, so the #16
   quick-load-on-death has nothing to restore.
@@ -863,7 +878,7 @@ item's own entry says what to check.
 
 ## 25. Auto-quicksave re-arms after loading a save / quick-loading
 
-- **Status:** Open
+- **Status:** Removed / cancelled (2026-10-14) - see #24; the owner opted for **manual save/load**.
 - **Priority:** Medium-High (the level-start save can be overwritten by a mid-level state)
 - **Observed (device, 2026-10-12):** the on-load quicksave fires again after the player loads a
   save file or quick-loads, not only at the very start of a level.
@@ -899,7 +914,7 @@ item's own entry says what to check.
 
 ## 27. Shots don't always appear to come from the weapon model
 
-- **Status:** Open
+- **Status:** **Fixed - verified on device (2026-10-14).**
 - **Priority:** Low-Medium (cosmetic; aim/impact are unaffected)
 - **Observed (device, 2026-10-12):** sometimes muzzle flash / shots don't line up with the visible
   weapon model.
@@ -982,7 +997,8 @@ item's own entry says what to check.
 
 ## 29. Muzzle flash is centred on the view instead of attached to the visible gun
 
-- **Status:** **Fixed in code (2026-10-13)** - needs a device pass to confirm.
+- **Status:** **Fixed - verified on device (2026-10-14)** - the flash sits at the visible gun's muzzle;
+  the on-foot dual pistols keep the game's own alternating flashes.
 - **Priority:** Medium (immersion; the flash reads as coming from the player's face)
 - **Observed (device, 2026-10-13):** the muzzle flash appeared **centred in the player's view** /
   above and behind the barrel, rather than at the muzzle of the visible 3D gun.
@@ -1019,7 +1035,7 @@ item's own entry says what to check.
 
 ## 30. Trim the in-game VR menu and pin the removed options to fixed defaults
 
-- **Status:** **Fixed in code (2026-10-13)** - menu trimmed to 7 rows; needs a device pass.
+- **Status:** **Fixed - verified on device (2026-10-14)** - the VR menu is trimmed to 7 rows.
 - **Priority:** Medium (clean-up; removes options that no longer do anything useful)
 - **Fix applied (2026-10-13):** `game/VRMenu.cpp` `s_Settings` trimmed 28 -> 7 rows
   (`game/VRMenu.h` `VRMENU_ITEMS` 28 -> 7): the kept rows are dominant hand, hand roll flip,
@@ -1077,8 +1093,8 @@ item's own entry says what to check.
 
 ## 31. Right B doesn't toggle mech walking / vehicle mode (raw A/B keystrokes leak)
 
-- **Status:** **Fixed in code (2026-10-13)** - needs a device pass (press **A** -> first/third
-  person, press **B** -> vehicle/mech transform; the view must no longer toggle from B).
+- **Status:** **Fixed - verified on device (2026-10-14)** - the Right-A view toggle works every
+  press, the leaked key-driven B no longer toggles the view, and the transform action (#36) works too.
 - **Priority:** Medium (core mech action)
 - **Observed (device, 2026-10-13):** pressing **B** toggles **third person**, and **A** does
   nothing. Expected: **A** = first/third-person view, **B** = vehicle/mech transform (#15's
@@ -1119,7 +1135,7 @@ item's own entry says what to check.
 
 ## 32. Jump intermittently stops working (an input flag appears to stick)
 
-- **Status:** Open (reported on device 2026-10-13)
+- **Status:** Removed - appears fixed (2026-10-14).
 - **Priority:** High (core movement; "sometimes unable to jump again randomly")
 - **Observed (device, 2026-10-13):** the player can, at random, no longer jump; the user suspects an
   input boolean is being held down when it should have been cleared.
@@ -1139,7 +1155,7 @@ item's own entry says what to check.
 
 ## 33. Auto-quicksave doesn't fire when loading into a new area of a level
 
-- **Status:** Open (reported on device 2026-10-13)
+- **Status:** Removed / cancelled (2026-10-14) - see #24; the owner opted for **manual save/load**.
 - **Priority:** Medium (same death-recovery family as #24 / #25)
 - **Observed (device, 2026-10-13):** entering a new **area** within a level does not re-trigger the
   quick save.
@@ -1156,7 +1172,7 @@ item's own entry says what to check.
 
 ## 34. Weapon model sits lower than the shot origin (aiming is off)
 
-- **Status:** Open (reported on device 2026-10-13)
+- **Status:** **Fixed - verified on device (2026-10-14)**.
 - **Priority:** Medium-High (shots don't line up with the visible gun)
 - **Observed (device, 2026-10-13):** the 3D weapon models appear **lower** than where their
   projectiles actually leave from, so it is hard to aim - the visible gun and the shot origin are
@@ -1177,7 +1193,7 @@ item's own entry says what to check.
 
 ## 35. Left/right dominant-hand setting does nothing (gun stays on the right hand)
 
-- **Status:** **Fixed in code (2026-10-13)** - needs a device pass.
+- **Status:** **Fixed - verified on device (2026-10-14, user-confirmed)**.
 - **Priority:** Medium-High (left-handed players can't aim with their dominant hand)
 - **Observed (device, 2026-10-13):** changing **dominant hand** to **left-handed** (the in-game VR
   menu, the desktop Settings window, or `[Controls] LeftHanded` in `ShogoVR.ini`) changed nothing -
@@ -1208,6 +1224,44 @@ item's own entry says what to check.
 
 ---
 
+## 36. Right B (transform mech/vehicle) needs repeated taps
+
+- **Status:** **Fixed - verified on device (2026-10-14)** - a single B press transforms, both ways.
+- **Priority:** Medium (core mech action)
+- **Observed (device, 2026-10-13/14):** with the Right-A view toggle now working every press, **Right
+  B** still needed rapid taps to transform; the user suspected the injected signal was firing too
+  fast and toggling on/off.
+- **Root cause (2026-10-14):** B is the only control whose XrApi button also arrives as a **leaked
+  WinlatorXR face-letter** `B` (#17). `CRiotClientShell::OnKeyDown` swallowed that letter with
+  `pClientDE->ClearInput()`, and `ClearInput()` takes **no key argument** - it wipes the **whole**
+  input state. The transform is requested from the *same* button press (`RequestTransform()` injects
+  the bound `VehicleModeToggle` key, `V`, via `SendInput`), so whichever arrives second wins: often
+  the leaked `B`'s `ClearInput()` cancelled the just-queued `V`, so the command never reached
+  `CPlayerObj::ToggleVehicleMode()`. The race is timing-dependent, so repeated taps eventually land.
+  Right A is unaffected because it is now performed **directly** (it injects nothing, #31), which is
+  exactly why A worked and B did not.
+  - **Separate, game-side:** `CPlayerObj::ToggleVehicleMode()` also silently does nothing when
+    leaving vehicle mode without room for the bipedal model (`!m_bBipedal` + the `SetDims` room
+    check, `PlayerObj.cpp`). That can make an individual press "do nothing" too, independent of the
+    race above.
+- **Fix applied (2026-10-14):**
+  - `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `OnKeyDown`: the leaked face key is still
+    returned (swallowed), but `ClearInput()` is **skipped for the letter `B`**. The leaked `B`-driven
+    `ChaseView` is already neutralised by the `OnCommandOn` guard (#31) and the `IsCommandOn` hook,
+    so nothing else is lost; X/Y keep their `ClearInput()`.
+  - `game/VRStereo.cpp` `RequestTransform()`: logs `VR: transform key down (scan 0x..)` so a device
+    log confirms the B edge and the injected key.
+- **Verify on device:** a single B press transforms (both directions, given room); the log shows one
+  `VR: transform key down` per press.
+- **Fallback if still flaky:** request the transform on the B **release** edge
+  (`m_nReleased & SHOGOVR_BTN_TRANSFORM`) so the injected `V` can never race the press-edge
+  `ClearInput()`.
+- **Refs:** `game/VRStereo.cpp` `RequestTransform` / `ReleaseTransformKey` / `UpdateInput`;
+  `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `OnKeyDown` / `OnCommandOn`;
+  `ShogoSource/ObjectDLL/PlayerObj.cpp` `ToggleVehicleMode`; #17, #23, #31.
+
+---
+
 ## Cross-cutting notes
 
 - **Basis / handedness convention (#1, #2, #8):** both HMD and hands flow through
@@ -1215,7 +1269,7 @@ item's own entry says what to check.
   roll (`VRHandFlip` inverted so `0` = corrected) are now confirmed on device. If the
   hand *aim* is ever found wrong, fix the hand frame in `GetHandWorld()` /
   `ToGameSpace()` against the (known-good) HMD basis rather than re-using the flag.
-- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32, #35):** the controller->game path (#3)
+- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32, #35, #36):** the controller->game path (#3)
   and firing (#4) are verified on device. #15 (revised mapping), #16 (auto-quicksave at level start
   + quick-load on the left trigger when dead) and #17 (the face-button keystrokes A/B/X/Y no longer
   leak) are fixed in code and need on-device verification. #18 (Left-Y re-selects the equipped
@@ -1228,7 +1282,8 @@ item's own entry says what to check.
   (B went third-person). Right A now drives the view **directly**
   (`CVRStereo::ConsumeViewToggle` -> `CRiotClientShell::SetExternalCamera`) and the key-driven
   `ChaseView` is ignored while a controller is live in gameplay; Right B still injects `V` for the
-  transform. #32 (jump intermittently stops working, as if an input flag is stuck) is still open
+  transform, but its leaked-face-key `ClearInput()` no longer cancels that injected key (#36,
+  2026-10-14). #32 (jump intermittently stops working, as if an input flag is stuck) is still open
   (2026-10-13). #22 (left-stick deadzone) still isn't
   applied on device (2026-10-13) and needs a per-axis split. Also reconcile each XrApi bool index
   in `ButtonBits()` against the on-device bool string. See #9 for what should happen when the input
