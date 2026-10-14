@@ -152,6 +152,7 @@ CVRStereo::CVRStereo()
 	m_fHapticL = m_fHapticR	= 0.0f;
 	VEC_SET(m_vRightF, 0.0f, 0.0f, 1.0f);	VEC_SET(m_vRightU, 0.0f, 1.0f, 0.0f);	VEC_INIT(m_vRightP);
 	VEC_SET(m_vLeftF, 0.0f, 0.0f, 1.0f);	VEC_SET(m_vLeftU, 0.0f, 1.0f, 0.0f);	VEC_INIT(m_vLeftP);
+	m_bLeftHanded			= DFALSE;
 	m_bGameplayInput		= DFALSE;
 	m_bWantViewToggle		= DFALSE;
 	m_nSuppressed			= 0;
@@ -1882,6 +1883,26 @@ void CVRStereo::UpdateBridge()
 		m_fTurnX = pose.turnX;	m_fTurnY = pose.turnY;
 		VEC_SET(m_vRightF, pose.rF[0], pose.rF[1], pose.rF[2]);	VEC_SET(m_vRightU, pose.rU[0], pose.rU[1], pose.rU[2]);	VEC_SET(m_vRightP, pose.rP[0], pose.rP[1], pose.rP[2]);
 		VEC_SET(m_vLeftF, pose.lF[0], pose.lF[1], pose.lF[2]);	VEC_SET(m_vLeftU, pose.lU[0], pose.lU[1], pose.lU[2]);	VEC_SET(m_vLeftP, pose.lP[0], pose.lP[1], pose.lP[2]);
+
+		// Dominant hand (Controls/LeftHanded): the rest of the mod treats the
+		// "right" hand as the gun hand, so in left-handed mode the two poses
+		// trade places and every gun model follows the other controller.  Only
+		// the triggers and grips change action - sticks and buttons stay put.
+		if (m_bLeftHanded)
+		{
+			DVector vT;
+			VEC_COPY(vT, m_vRightF);	VEC_COPY(m_vRightF, m_vLeftF);	VEC_COPY(m_vLeftF, vT);
+			VEC_COPY(vT, m_vRightU);	VEC_COPY(m_vRightU, m_vLeftU);	VEC_COPY(m_vLeftU, vT);
+			VEC_COPY(vT, m_vRightP);	VEC_COPY(m_vRightP, m_vLeftP);	VEC_COPY(m_vLeftP, vT);
+
+			DDWORD n = m_nButtons;
+			m_nButtons = (n & ~(DDWORD)(SHOGOVR_BTN_FIRE | SHOGOVR_BTN_JUMP |
+										SHOGOVR_BTN_DOUBLEJUMP | SHOGOVR_BTN_LEFT_TRIGGER))
+					   | ((n & SHOGOVR_BTN_FIRE)			? SHOGOVR_BTN_LEFT_TRIGGER : 0)
+					   | ((n & SHOGOVR_BTN_LEFT_TRIGGER)	? SHOGOVR_BTN_FIRE			: 0)
+					   | ((n & SHOGOVR_BTN_JUMP)			? SHOGOVR_BTN_DOUBLEJUMP	: 0)
+					   | ((n & SHOGOVR_BTN_DOUBLEJUMP)		? SHOGOVR_BTN_JUMP			: 0);
+		}
 	}
 	else if (!m_bBridgeAlive)
 	{
@@ -1938,7 +1959,11 @@ void CVRStereo::UpdateBridge()
 	if (m_fHapticR > 0.0f) m_fHapticR -= 1.0f;
 	if (m_vtHaptics.GetFloat(1.0f) != 0.0f)
 	{
-		if (m_nPressed & SHOGOVR_BTN_FIRE)			m_fHapticR = 4.0f;
+		if (m_nPressed & SHOGOVR_BTN_FIRE)
+		{
+			if (m_bLeftHanded)	m_fHapticL = 4.0f;		// the left trigger is the gun trigger
+			else				m_fHapticR = 4.0f;
+		}
 		if (m_nPressed & SHOGOVR_BTN_NEXT_WEAPON)	m_fHapticR = 2.0f;
 	}
 	if (m_fHapticL < 0.0f) m_fHapticL = 0.0f;
@@ -2283,6 +2308,18 @@ void CVRStereo::LoadSettingsFile(DBOOL bFirst)
 	if (!GetFileAttributesExA(m_szIniPath, GetFileExInfoStandard, &fa)) return;
 	m_nIniTimeLo = fa.ftLastWriteTime.dwLowDateTime;
 	m_nIniTimeHi = fa.ftLastWriteTime.dwHighDateTime;
+
+	// Dominant hand ([Controls] LeftHanded, set by the VR menu and the desktop
+	// settings window).  The bridge applied this for PCVR; on the WinlatorXR
+	// path the game reads it itself so left-handed mode works with no bridge.
+	DBOOL bLeftHanded = GetPrivateProfileIntA("Controls", "LeftHanded", 0, m_szIniPath) != 0;
+	if (bLeftHanded != m_bLeftHanded)
+	{
+		m_bLeftHanded = bLeftHanded;
+		Log("VR: dominant hand %s", m_bLeftHanded
+			? "left (gun follows the left hand, triggers/grips swapped)"
+			: "right");
+	}
 
 	// [Game] holds console variables: "VRHudWidth=60" -> "VRHudWidth 60".
 	// Only VR... names with plain numbers are accepted.
@@ -3867,6 +3904,13 @@ void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &
 DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut)
 {
 	if (!m_pClientDE || !m_bAimByHand) return DFALSE;
+
+	// The on-foot dual pistols (Colt 45) fire from two barrels alternately
+	// (W_FIRED / W_FIRED2) and the game already puts each flash on the right
+	// barrel; this helper only knows the one muzzle offset, which pinned both
+	// flashes to the same side.  Let that weapon keep the game's own flashes
+	// (#29 follow-up); every other weapon still gets the visible-muzzle fix.
+	if (nWeaponId == GUN_COLT45_ID) return DFALSE;
 
 	// Is the mod drawing its own third-person gun for this weapon?  (Same test
 	// as UpdateHeldGun - keep the two in step.)

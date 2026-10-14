@@ -478,6 +478,10 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   aiming is not disturbed; when VR isn't posing the gun by hand the mod returns `DFALSE` and the draw
   falls back to `m_vFlashPos`. Documented as edit 3 in
   `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`. Build clean; awaiting a device pass.
+  **Follow-up (13 Oct):** the on-foot **dual pistols** (Colt 45, `GUN_COLT45_ID`) fire from two
+  barrels alternately (`W_FIRED` / `W_FIRED2`), but the helper only knows the one `W_FIRED` muzzle,
+  so it pinned both flashes to the same barrel. `GetMuzzleFlashWorld()` now returns `DFALSE` for that
+  weapon, so it keeps the game's own alternating flashes; every other weapon keeps the fix.
 - **#30 in-game VR menu trimmed** - the settings page went from 28 rows to 7
   (`game/VRMenu.cpp` `s_Settings`, `VRMENU_ITEMS` in `VRMenu.h`): dominant hand,
   hand roll flip (now reading **off**/**on**), turning (default smooth), smooth turn
@@ -485,6 +489,12 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   their listed defaults, correcting `VRSnapTurn` -> smooth, `VRMoveDir` -> where you
   look, `VRTwoHand` -> off and `VRGunScaleMCA` -> 1.5x in the `CVRStereo` VarTrack
   `Init` calls. Build clean; awaiting a device pass.
+- **#35 dominant hand now works** - `Controls/LeftHanded` was read only by the PCVR bridge, so on
+  the WinlatorXR path the toggle was inert. `CVRStereo` now reads it itself
+  (`LoadSettingsFile`, logged as `VR: dominant hand left/right`) and, when left-handed, swaps the two
+  hand poses (so the gun models follow the other controller) and swaps **only** the trigger/grip
+  actions - left trigger fires, left grip double-jumps - leaving the sticks and face buttons alone.
+  Build clean; awaiting a device pass.
 
 This brings the tracked ShogoSource notes to **nine** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`).
@@ -514,7 +524,8 @@ The immediate next actions are:
    drives the view directly (`CVRStereo::ConsumeViewToggle` ->
    `CRiotClientShell::SetExternalCamera`) and the leaked key-driven `ChaseView` is
    ignored while a controller is live in gameplay. #23's view-toggle half is fixed
-   with it.
+   with it. **#35 (dominant hand) is fixed in code (13 Oct):** left-handed now swaps the
+   two hand poses and the trigger/grip actions, read from `Controls/LeftHanded` by the game.
 4. **Work the remaining items** (body shown in third-person / cutscenes #21,
    on-foot autosave #24, autosave re-arm #25, intro-video y-offset #26,
    shot-vs-model origin #27) - one at a time, logging each in `Docs/BUGS_TO_FIX.md`

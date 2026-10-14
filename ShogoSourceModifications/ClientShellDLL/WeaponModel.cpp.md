@@ -107,4 +107,6 @@ Notes:
   on `vNewPos`), the same value passed to `g_VRStereo.UpdateHeldGun()`.
 - `GetMuzzleFlashWorld()` returns `DFALSE` when VR is not posing the gun by hand
   (head aim, or non-VR), so `m_vFlashDrawPos` falls back to `m_vFlashPos` and the
-  flat game is unchanged.
+  flat game is unchanged.  It also returns `DFALSE` for the on-foot **dual pistols**
+  (`GUN_COLT45_ID`), which fire from two barrels alternately - the helper only knows
+  the one muzzle, so that weapon keeps its own alternating flashes.

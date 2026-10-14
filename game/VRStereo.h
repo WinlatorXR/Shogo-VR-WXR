@@ -400,6 +400,7 @@ class CVRStereo
 		DFLOAT		m_fHapticL, m_fHapticR;	// remaining vibration frames sent to the runtime
 		DVector		m_vRightF, m_vRightU, m_vRightP;
 		DVector		m_vLeftF, m_vLeftU, m_vLeftP;
+		DBOOL		m_bLeftHanded;		// dominant hand is the left (Controls/LeftHanded): swap hands
 		DBOOL		m_bGameplayInput;	// controller buttons act as game commands (not menu keys)
 		DBOOL		m_bWantViewToggle;	// Right A pressed - the shell performs the view toggle (#31)
 		DDWORD		m_nSuppressed;		// buttons held when gameplay resumed - ignored until released

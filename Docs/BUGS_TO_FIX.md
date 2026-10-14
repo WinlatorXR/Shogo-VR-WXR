@@ -14,7 +14,9 @@ Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #
 peripheral hurt/explosion flash - confirmed 2026-10-13). #4 and #9 were verified with the WinlatorXR
 XrApi UDP Tester rather than in the headset. **Removed:** #7 (supersampling not pursued) and #18
 (zoom re-select, folded into #19). **Fixed in code, awaiting a device pass:** #19 (zoom removed),
-#29 (muzzle flash moved to the visible gun's muzzle) and #30 (VR menu trimmed to 7 rows).
+#23 (A/B view/transform), #29 (muzzle flash moved to the visible gun's muzzle; the on-foot dual
+pistols deliberately excluded, see #29), #30 (VR menu trimmed to 7 rows) and #35 (dominant hand now
+swaps the hands and the triggers/grips).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -46,15 +48,17 @@ XrApi UDP Tester rather than in the headset. **Removed:** #7 (supersampling not 
 | 26 | Intro video too high | Open |
 | 27 | Shots vs weapon model | Open |
 | 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
-| 29 | Muzzle flash centred on the view | Fixed in code - needs device pass (2026-10-13) |
+| 29 | Muzzle flash centred on the view | Fixed in code - needs device pass (2026-10-13); dual pistols excluded |
 | 30 | Trim the in-game VR menu | Fixed in code (2026-10-13) |
 | 31 | Right B toggle + A/B keystrokes leak | Fixed in code - A view toggle direct; leaked key-driven B blocked (2026-10-13) |
 | 32 | Jump intermittently stops working | Open |
 | 33 | Area load doesn't re-trigger autosave | Open |
 | 34 | Weapon model lower than shot origin | Open |
+| 35 | Left/right dominant hand does nothing | Fixed in code (2026-10-13) |
 
-#19 (zoom removed), #28 (flash on the post-render path) and #30 (VR menu trimmed) are in code and
-awaiting a headset pass; the other rows in the table are the open / in-progress work, and each
+#19 (zoom removed), #23 (A/B view/transform), #28 (flash on the post-render path), #29 (visible-gun
+muzzle flash; dual pistols excluded), #30 (VR menu trimmed) and #35 (dominant-hand swap) are in code
+and awaiting a headset pass; the other rows in the table are the open / in-progress work, and each
 item's own entry says what to check.
 
 ---
@@ -997,6 +1001,12 @@ item's own entry says what to check.
   falls back to `m_vFlashPos` (flat game unchanged).
   - One log line per weapon (`VR muzzle flash: weapon N -> x,y,z (held|first-person gun)`) confirms
     it engaged on device.
+  - **Dual pistols excluded (2026-10-13 follow-up):** the on-foot **Colt 45** (`GUN_COLT45_ID`) fires
+    from **two barrels alternately** (`W_FIRED` / `W_FIRED2`, `GetWeaponMuzzleOffset` returns a
+    different muzzle for each), but this helper only knows the one `W_FIRED` offset - so it pinned
+    both flashes to the same barrel ("weird behaviour"). `GetMuzzleFlashWorld()` now returns `DFALSE`
+    for that weapon, so it keeps the game's own alternating flashes and every other weapon still gets
+    the visible-muzzle fix.
 - **Still to verify (device):** fire each weapon and confirm the flash sits at the barrel tip on the
   first-person gun (the default) and on the held gun (`VRGunModel 1`). The held-gun muzzle uses the
   first-person offset table, which may be a little off if the powerup model's origin differs.
@@ -1165,6 +1175,39 @@ item's own entry says what to check.
 
 ---
 
+## 35. Left/right dominant-hand setting does nothing (gun stays on the right hand)
+
+- **Status:** **Fixed in code (2026-10-13)** - needs a device pass.
+- **Priority:** Medium-High (left-handed players can't aim with their dominant hand)
+- **Observed (device, 2026-10-13):** changing **dominant hand** to **left-handed** (the in-game VR
+  menu, the desktop Settings window, or `[Controls] LeftHanded` in `ShogoVR.ini`) changed nothing -
+  the gun still followed the right controller and the right trigger still fired.
+- **Root cause:** `Controls/LeftHanded` was read only by the PCVR **bridge**
+  (`bridge/ShogoVRBridge.cpp`, which swaps the pose, sticks and bindings) and the launcher's bindings
+  UI. The WinlatorXR path runs entirely in `CShell.dll` from the XrApi UDP feed, and `CVRStereo`
+  never read the setting, so on Quest the toggle was inert.
+- **Fix applied (2026-10-13):** the game now reads `[Controls] LeftHanded` itself in
+  `CVRStereo::LoadSettingsFile()` (re-read live when the ini changes; logs
+  `VR: dominant hand left/right`). In `CVRStereo::UpdateBridge()`, when it is on:
+  - the two hand poses are **swapped** (`m_vRight*` <-> `m_vLeft*`), so every gun model
+    (`AdjustWeaponPose`, `UpdateHeldGun`, the muzzle-flash helper) and two-handed aiming follow the
+    **other** controller;
+  - **only the triggers and grips** change action - `FIRE` <-> `LEFT_TRIGGER` (left trigger fires,
+    right trigger is the dead-state quick-load) and `JUMP` <-> `DOUBLEJUMP` (left grip double-jumps,
+    right grip jumps). Every other control (sticks, face buttons, crouch, recentre, menu) is
+    unchanged;
+  - the fire haptic moves to the left controller.
+- **Deliberately not changed:** the sticks stay as they are (left = move, right = turn) - the request
+  was triggers/grip plus position/rotation only.
+- **Verify on device:** with dominant hand = left, the gun sits in the left hand and points where it
+  points; left trigger fires; left grip double-jumps; right grip jumps; everything else unchanged.
+  The log shows `VR: dominant hand left (...)` on startup / on change.
+- **Refs:** `game/VRStereo.cpp` `LoadSettingsFile` / `UpdateBridge` (pose + button swap) / haptics;
+  `game/VRMenu.cpp` "dominant hand" row (`Controls` / `LeftHanded`); `game/XrApiUDP.cpp`
+  `ButtonBits`; `game/ShogoVRShared.h` button bits; `bridge/ShogoVRBridge.cpp` (legacy PCVR swap).
+
+---
+
 ## Cross-cutting notes
 
 - **Basis / handedness convention (#1, #2, #8):** both HMD and hands flow through
@@ -1172,7 +1215,7 @@ item's own entry says what to check.
   roll (`VRHandFlip` inverted so `0` = corrected) are now confirmed on device. If the
   hand *aim* is ever found wrong, fix the hand frame in `GetHandWorld()` /
   `ToGameSpace()` against the (known-good) HMD basis rather than re-using the flag.
-- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32):** the controller->game path (#3)
+- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32, #35):** the controller->game path (#3)
   and firing (#4) are verified on device. #15 (revised mapping), #16 (auto-quicksave at level start
   + quick-load on the left trigger when dead) and #17 (the face-button keystrokes A/B/X/Y no longer
   leak) are fixed in code and need on-device verification. #18 (Left-Y re-selects the equipped
@@ -1189,7 +1232,9 @@ item's own entry says what to check.
   (2026-10-13). #22 (left-stick deadzone) still isn't
   applied on device (2026-10-13) and needs a per-axis split. Also reconcile each XrApi bool index
   in `ButtonBits()` against the on-device bool string. See #9 for what should happen when the input
-  feed itself stalls.
+  feed itself stalls. **#35 (dominant hand) is now read by the game** (`Controls/LeftHanded`):
+  left-handed swaps the two hand poses and the trigger/grip actions, leaving the sticks and buttons
+  alone.
 - **Zoom (#18 -> #19, was RELEASE BLOCKER):** the pin-FOV half stays (the eye FOV is never
   multiplied by the zoom ratio, so the presented scale/FOV can't blow up), but the **scope-cursor
   zoom failed on device (2026-10-13)** and is being **removed for now**: drop the `ZOOM` mapping
@@ -1232,7 +1277,8 @@ item's own entry says what to check.
 - **Settings menu (#30, #5):** with the menu now readable (#5, verified) the in-game VR page is
   being **trimmed** to a short list (dominant hand, hand roll flip, turning, smooth turn speed,
   recentre, reset) with most rows removed and the removed options pinned to the fixed defaults
-  listed in #30. The internal menu virtual layout from #5 is not a user row and stays.
+  listed in #30. The internal menu virtual layout from #5 is not a user row and stays. The kept
+  **dominant hand** row now actually does something - see #35 (the game reads `Controls/LeftHanded`).
 - **Frame pacing / headset stall (#9):** `VRSyncHold` (now on by default) hard-blocks
   `Poll()` on a fresh `HMD_SYNC`; an unbounded hang is accepted because the WinlatorXR sandbox
   can be torn down if the runtime is gone for good.
