@@ -410,10 +410,10 @@ The 11 Oct 2026 session added six more in-code fixes (all awaiting a device pass
   buttons as the keyboard letters X/Y/B/A; `VRStereo.cpp`
   `ShouldSwallowFaceKey()` plus `RiotClientShell.cpp` `OnKeyDown`/`OnKeyUp`
   (`ClearInput()` + early return) drop them while playing and alive.
-- **#18 Left-Y weapon zoom** - no zoom command exists; zoom is toggled by
-  re-selecting the equipped weapon. `VRStereo.cpp` caches the held weapon id
-  (`UpdateHeldGun`) and `UpdateInput` maps it back with `GetCommandId(...)` and
-  taps that command (via the new `#include "WeaponDefs.h"`).
+- **#18 Left-Y weapon zoom (removed)** - no zoom command exists; zoom was toggled
+  by re-selecting the equipped weapon (`VRStereo.cpp` cached the held weapon id in
+  `UpdateHeldGun` and `UpdateInput` tapped `GetCommandId(...)`). This is removed with
+  the #19 zoom removal.
 
 This brings the tracked ShogoSource notes to **eight** files
 (`ShogoSourceModifications/` now also documents `PlayerStats.cpp`).
@@ -423,14 +423,15 @@ now #1-#34) and worked several of them in code; the 13 Oct 2026 headset pass
 confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out the
 #19 zoom approach, while re-opening the camera half of #20 and #28:
 
-- **#19 weapon zoom (was a release blocker) - removed.** The pin-FOV half is kept
-  (`VRStereo.cpp` `RenderStereo()` pins the eye FOV to the headset base and leaves
-  the eye separation at the full IPD, so zoom can no longer change the presented
-  scale or the reported frame FOV - the narrow FOV had made the runtime present a
-  tiny centre image that could stick). The **scope-cursor overlay failed on
-  device**, so zoom is being removed for now: drop the `ZOOM` mapping and the
-  Left-Y toggle and delete `DrawScopeOverlay()` / `m_bScoped`. True magnification
-  needs the offscreen second pass if it is ever wanted.
+- **#19 weapon zoom (was a release blocker) - removed in code (13 Oct).** The
+  pin-FOV half is kept (`VRStereo.cpp` `RenderStereo()` pins the eye FOV to the
+  headset base and leaves the eye separation at the full IPD, so the presented
+  scale and the reported frame FOV can never change - the narrow FOV had made the
+  runtime present a tiny centre image that could stick). The **scope-cursor
+  overlay failed on device**, so zoom is gone: the `ZOOM` mapping / `SHOGOVR_BTN_ZOOM`
+  bit, the Left-Y re-select, `DrawScopeOverlay()`, `m_bScoped` and the scope
+  surfaces are all removed (with #18). True magnification needs the offscreen
+  second pass if it is ever wanted.
 - **#5 menu virtual layout (finished)** - `VRStereo.cpp` `ComputeLayout()` sets
   `m_bMenuLayoutDirty` when the menu virtual size changes and `UpdateBridge()`
   sets it on the bridge-alive transition; `GetMenuLayoutSize()` is implemented;
@@ -455,9 +456,35 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   per-eye **edge vignette** (`DrawScreenFlash`) in the HUD pass. Opaque nested
   frames, since the 2D API has no alpha; the centre of vision stays clear.
   Documented as edit 19 in `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`.
-  **Reopened 13 Oct:** the vignette does not appear on device at all (no hurt/explosion
-  feedback) - the tint isn't reaching the draw, so instrument the
-  `SetScreenFlash`/`DrawScreenFlash` path and re-test.
+  **Re-fixed 13 Oct:** the first version drew inside the HUD's optimized-2D block and did not reach
+  the captured frame. The draw now runs on the **post-render path, beside the WinlatorXR sync
+  pixel** (`CVRStereo::DrawScreenFlashFrame()` after `End3D()` in `RenderCamera()`,
+  `UpdateMenuState()` and `UpdatePausedState()`), and the flash is now just **two rectangles per
+  frame** - a full-height band down the outer edge of each eye (left eye's left side, right eye's
+  right side), a peripheral-vision "tunnel vision" flash. The earlier nested-frame vignette was ~20
+  fills per frame and too heavy on device; this is 2. It logs on/off and its first draw, and a
+  `VRFlashTest` CVar forces a red flash for testing; on the PC that lights the two outer bands.
+  **Verified on device (2026-10-13):** the player confirms the peripheral flash works and is not too
+  expensive.
+- **#29 muzzle flash moved to the visible gun** - the game positions its flash sprite from the
+  *flat-screen* muzzle (`CWeaponModel::m_vFlashPos` = camera + weapon offset + muzzle offset), so
+  with VR holding the gun in the hand the flash sat above and behind the barrel. The mod now
+  supplies the **visible** gun's muzzle each frame via
+  `CVRStereo::GetMuzzleFlashWorld(nWeaponId, vCamPos, bFootScale, vOut)` (mirroring either
+  `AdjustWeaponPose`'s first-person pose or `UpdateHeldGun`'s held pose, then offsetting by the
+  game's own `GetWeaponMuzzleOffset()` scaled by the gun scale). The shell fills a new
+  `CWeaponModel::m_vFlashDrawPos` from it (`UpdateWeaponModel`) and draws the sprite there
+  (`UpdateFlash`). `m_vFlashPos` - the **shot origin** sent in `MID_WEAPON_FIRE` - is left alone, so
+  aiming is not disturbed; when VR isn't posing the gun by hand the mod returns `DFALSE` and the draw
+  falls back to `m_vFlashPos`. Documented as edit 3 in
+  `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`. Build clean; awaiting a device pass.
+- **#30 in-game VR menu trimmed** - the settings page went from 28 rows to 7
+  (`game/VRMenu.cpp` `s_Settings`, `VRMENU_ITEMS` in `VRMenu.h`): dominant hand,
+  hand roll flip (now reading **off**/**on**), turning (default smooth), smooth turn
+  speed, recentre view, reset to defaults, back. The removed options are pinned to
+  their listed defaults, correcting `VRSnapTurn` -> smooth, `VRMoveDir` -> where you
+  look, `VRTwoHand` -> off and `VRGunScaleMCA` -> 1.5x in the `CVRStereo` VarTrack
+  `Init` calls. Build clean; awaiting a device pass.
 
 This brings the tracked ShogoSource notes to **nine** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`).
@@ -469,22 +496,29 @@ The immediate next actions are:
    (#4), menu centring (#6), the #5 menu virtual layout, intro splash/movies (#10),
    left-stick movement (#11), render resolution (#13), crosshair default (#14), the
    revised control layout (#15), the auto-quicksave / quickload-on-death flow (#16)
-   and the face-button leak fix (#17). Nothing is left awaiting a first device pass.
-2. **Do the clean-up pass:** remove zoom (#19, which also drops the #18 Left-Y
-   re-select) and trim the in-game VR menu to the short list with fixed defaults
-   (#30). #7 (supersampling) is dropped and not pursued.
-3. **Fix the 13 Oct regressions / misses** (all reported on device): the hurt /
-   explosion flash never shows (#28, reopened), crouch still doesn't move the VR
-   camera (#20), the loading / bumper screen is still mono with unreadable text
-   (#12 - fix like #5), `B` doesn't toggle mech walking / vehicle mode because the raw
-   A/B keystrokes still leak (#31 - block A/B everywhere except the pause menu, see
-   #17), jump intermittently stops working (#32), an in-level area load doesn't
-   re-trigger the autosave (#33), the weapon model sits lower than its shot origin
-   (#34, aiming is off), and the left/right stick deadzone is still not applied (#22).
+   and the face-button leak fix (#17).
+2. **Clean-up pass - done in code, part-verified.** Zoom is removed (#19, which also
+   drops the #18 Left-Y re-select), the in-game VR menu is trimmed to the 7-row short
+   list with the removed options pinned to their defaults (#30), the hurt / explosion
+   flash is re-drawn on the post-render path (#28) and is now **verified on device**
+   (13 Oct), and the muzzle flash is moved to the visible gun's muzzle (#29). #7
+   (supersampling) is dropped and not pursued.
+3. **Fix the remaining 13 Oct regressions / misses** (all reported on device): crouch
+   still doesn't move the VR camera (#20), the loading / bumper screen is still mono
+   with unreadable text (#12 - fix like #5), jump intermittently stops working (#32),
+   an in-level area load doesn't re-trigger the autosave (#33), the weapon model sits
+   lower than its shot origin (#34, aiming is off), and the left/right stick deadzone
+   is still not applied (#22). **#31 is fixed in code (13 Oct):** the game binds
+   ChaseView (first/third person) to the letter `B`, so the old Right-A injection of
+   that key was swallowed while the leaked raw `B` toggled the view; Right A now
+   drives the view directly (`CVRStereo::ConsumeViewToggle` ->
+   `CRiotClientShell::SetExternalCamera`) and the leaked key-driven `ChaseView` is
+   ignored while a controller is live in gameplay. #23's view-toggle half is fixed
+   with it.
 4. **Work the remaining items** (body shown in third-person / cutscenes #21,
-   right A/B taps #23, on-foot autosave #24, autosave re-arm #25, intro-video
-   y-offset #26, shot-vs-model origin #27, muzzle flash centred on the view #29) -
-   one at a time, logging each in `Docs/BUGS_TO_FIX.md` as it lands.
+   on-foot autosave #24, autosave re-arm #25, intro-video y-offset #26,
+   shot-vs-model origin #27) - one at a time, logging each in `Docs/BUGS_TO_FIX.md`
+   as it lands.
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource

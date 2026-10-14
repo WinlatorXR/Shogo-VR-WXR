@@ -115,8 +115,9 @@ class CVRStereo
 		// through the engine camera light-add, which renders as a broken
 		// full-screen quad under the stereo layout, so while VR is active the
 		// shell feeds the current tint here instead (once per frame while a
-		// tint is active; ClearScreenFlash() when it ends) and the mod draws a
-		// per-eye edge vignette.  Colour channels are 0..1.
+		// tint is active; ClearScreenFlash() when it ends) and the mod paints a
+		// band down the outer edge of each eye (a peripheral-vision flash).
+		// Colour channels are 0..1.
 		void	SetScreenFlash(DFLOAT r, DFLOAT g, DFLOAT b);
 		void	ClearScreenFlash();
 		DBOOL	IsHeadTracking();
@@ -127,6 +128,10 @@ class CVRStereo
 		// uses this to keep the captured frame in sync).  Call once per frame,
 		// after all drawing, before the frame is presented.
 		void	DrawXrSyncPixel();
+		// Hurt/explosion vignette (#28) for every eye.  Call once per frame
+		// after the world and the HUD, beside DrawXrSyncPixel - the same
+		// post-render path, which is known to reach the captured frame.
+		void	DrawScreenFlashFrame();
 		void	DetectMovieSource();
 
 		// Motion controllers (through the bridge)
@@ -140,9 +145,16 @@ class CVRStereo
 		DDWORD	GetPressed()			{ return m_nPressed; }
 		DDWORD	GetReleased()			{ return m_nReleased; }
 		void	SetGameplayInput(DBOOL b);
+		DBOOL	IsGameplayInput()		{ return m_bGameplayInput; }
 		void	SetPlayerDead(DBOOL b)		{ m_bPlayerDead = b; }
 		void	SetLevelLoaded()			{ m_bAutosavePending = DTRUE; m_nAutosaveFrames = 0; }
 		void	UpdateInput();				// per-frame: controller -> game commands / menu keys
+		// Right A asks for the first/third-person view toggle.  The shell polls
+		// this and performs the toggle directly: the game binds that view to the
+		// keyboard letter B (defkeybd.cfg "##48"), which is one of the raw face
+		// keys WinlatorXR also leaks, so injecting the bound key cannot work
+		// (#23/#31).  Returns DTRUE once and clears the request.
+		DBOOL	ConsumeViewToggle();
 		DBOOL	GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight);	// left stick (DFALSE if centred)
 		int		PollWeaponCycle();			// right stick up/down: +1 next, -1 previous
 		int		PollMenuDirection();		// sticks as arrow keys, with key repeat
@@ -153,6 +165,15 @@ class CVRStereo
 		// instead of the first-person model.  Call after the first-person
 		// weapon model has been updated for the frame.
 		void	UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos);
+
+		// Muzzle flash placement (#29): the muzzle of the gun the player
+		// actually sees, in world space, so the shell can draw the game's
+		// muzzle-flash sprite there (VR holds the gun in the hand, but the
+		// game still positions the flash for the flat-screen view).  Returns
+		// DFALSE when VR isn't posing the gun by hand - the shell keeps its
+		// own spot.
+		DBOOL	GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut);
+
 		void	CheckRenderer(DBOOL bStable);	// resets the renderer if it's drawing at the wrong size
 		void	FitGameWindow();			// resize the game window so its client area is the render size
 		void	FitVRWindow();				// drop the title bar and fill the display, like HWXR
@@ -380,6 +401,7 @@ class CVRStereo
 		DVector		m_vRightF, m_vRightU, m_vRightP;
 		DVector		m_vLeftF, m_vLeftU, m_vLeftP;
 		DBOOL		m_bGameplayInput;	// controller buttons act as game commands (not menu keys)
+		DBOOL		m_bWantViewToggle;	// Right A pressed - the shell performs the view toggle (#31)
 		DDWORD		m_nSuppressed;		// buttons held when gameplay resumed - ignored until released
 		DBOOL		m_bAimByHand;		// this frame's aim comes from the right hand
 		DBOOL		m_bPlayerDead;		// the player is dead (left trigger quick-loads)
@@ -507,6 +529,7 @@ class CVRStereo
 		VarTrack	m_vtAutoBridge;		// VRAutoBridge     1 = start the headset bridge with the game
 		VarTrack	m_vtHaptics;		// VRHaptics        1 = pulse the controllers on fire/weapon edges
 		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = block for a new HMD_SYNC each frame (default on)
+		VarTrack	m_vtFlashTest;		// VRFlashTest      0 = off; non-zero forces a red flash every frame (diagnostic)
 };
 
 extern CVRStereo g_VRStereo;

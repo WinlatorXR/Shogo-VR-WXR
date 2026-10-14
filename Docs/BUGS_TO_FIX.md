@@ -9,11 +9,12 @@ Legend: `Open` / `In progress` / `Fixed in code` (awaiting a device pass) / `Fix
 
 ## Status at a glance
 
-Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #16, #17** and
-**#20** (the crouch *body animation* only - the camera half is still open). #4 and #9 were
-verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed:** #7
-(supersampling not pursued), #18 (zoom re-select) and #19 (weapon zoom - the scope-cursor
-overlay failed on device, so the zoom half is dropped and only the pin-FOV guard is kept).
+Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #16, #17**,
+**#20** (the crouch *body animation* only - the camera half is still open) and **#28** (the
+peripheral hurt/explosion flash - confirmed 2026-10-13). #4 and #9 were verified with the WinlatorXR
+XrApi UDP Tester rather than in the headset. **Removed:** #7 (supersampling not pursued) and #18
+(zoom re-select, folded into #19). **Fixed in code, awaiting a device pass:** #19 (zoom removed),
+#29 (muzzle flash moved to the visible gun's muzzle) and #30 (VR menu trimmed to 7 rows).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -35,25 +36,26 @@ overlay failed on device, so the zoom half is dropped and only the pin-FOV guard
 | 16 | Can't respawn when dead | Fixed - verified |
 | 17 | Face buttons leak X/Y/B/A | Fixed - verified (A/B leak: #31) |
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
-| 19 | Zoom shrinks view (blocker) | Won't fix for now - removing zoom (2026-10-13) |
+| 19 | Zoom shrinks view (blocker) | Fixed in code - zoom removed (2026-10-13) |
 | 20 | Crouch doesn't lower the VR camera | In progress (body crouch works; camera not lowered) |
 | 21 | Body shown in 3rd-person / cutscenes | Open (confirmed on device) |
 | 22 | Left-stick deadzone | Open (still not applied on device) |
-| 23 | Right A/B intermittent/swapped | Open |
+| 23 | Right A/B intermittent/swapped | Fixed in code - A routed direct; leaked B blocked (2026-10-13) |
 | 24 | On-foot autosave | Open |
 | 25 | Autosave re-arms after load | Open |
 | 26 | Intro video too high | Open |
 | 27 | Shots vs weapon model | Open |
-| 28 | Hurt/explosion flash not visible | Reopened (not visible on device) |
-| 29 | Muzzle flash centred on the view | Open |
-| 30 | Trim the in-game VR menu | Open |
-| 31 | Right B toggle + A/B keystrokes leak | Open |
+| 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
+| 29 | Muzzle flash centred on the view | Fixed in code - needs device pass (2026-10-13) |
+| 30 | Trim the in-game VR menu | Fixed in code (2026-10-13) |
+| 31 | Right B toggle + A/B keystrokes leak | Fixed in code - A view toggle direct; leaked key-driven B blocked (2026-10-13) |
 | 32 | Jump intermittently stops working | Open |
 | 33 | Area load doesn't re-trigger autosave | Open |
 | 34 | Weapon model lower than shot origin | Open |
 
-Nothing is awaiting a first headset pass right now; the remaining rows in the table are the
-open / in-progress work, and each item's own entry says what to check.
+#19 (zoom removed), #28 (flash on the post-render path) and #30 (VR menu trimmed) are in code and
+awaiting a headset pass; the other rows in the table are the open / in-progress work, and each
+item's own entry says what to check.
 
 ---
 
@@ -653,15 +655,21 @@ open / in-progress work, and each item's own entry says what to check.
 
 ## 19. Weapon zoom shrinks the whole view to a tiny square and never restores (RELEASE BLOCKER)
 
-- **Status:** **Won't fix as designed - removing zoom (2026-10-13)** (option 1 shipped but failed
-  on device)
+- **Status:** **Fixed in code (2026-10-13)** - zoom removed; needs a device pass to confirm the
+  view always fills normally (no tiny centre square, no stuck FOV).
 - **Priority:** Blocker
+- **Fix applied (2026-10-13) - option 3 (remove zoom):** dropped the `ZOOM` mapping in
+  `game/XrApiUDP.cpp` `ButtonBits()` and the `SHOGOVR_BTN_ZOOM` bit (both `ShogoVRShared.h`
+  copies); removed the Left-Y re-select block in `CVRStereo::UpdateInput`, the scope overlay
+  (`DrawScopeOverlay()`, `m_bScoped`, the `m_hScopeOnFoot`/`m_hScopeMech` surfaces) and the
+  now-unused `m_nWeaponId` tracking. The pin-FOV guard in `RenderStereo()` is kept (the eye FOV
+  stays at the headset base) and the camera FOV ratio is now only logged. Build clean; deployed;
+  PC smoke ok (new stamp `built Oct 13 2026 21:24:09`, intro runs).
 - **Device result (2026-10-13):** the pin-FOV + scope-cursor approach (option 1 below) **does not
   work** in the headset ("the new zoom method doesn't work"). Decision: **remove zoom for now**
-  (option 3) - drop the `ZOOM` mapping and the Left-Y toggle, and remove the scope overlay. Keep
-  the pin-FOV change itself (the eye FOV is never multiplied by the zoom ratio): it is what stops
-  the tiny-square / stuck-FOV presentation bug, and with zoom no longer toggleable the camera
-  never zooms, so `m_bScoped` stays false and `DrawScopeOverlay` never draws.
+  (option 3). The pin-FOV guard is kept (the eye FOV is never multiplied by the zoom ratio): it is
+  what stops the tiny-square / stuck-FOV presentation bug. Zoom is now unbindable, so the camera
+  never zooms and nothing scope-related is drawn.
 - **Observed (device, 2026-10-12):** Left Y zoom (re-select the equipped weapon, #18) is hard to
   trigger and sometimes doesn't fire; when it does, the **entire display collapses to a small
   square in the middle** of the view and **never restores** afterwards.
@@ -705,9 +713,8 @@ open / in-progress work, and each item's own entry says what to check.
   - Deliberate trade-off: this removes true magnification - zoom now shows the world at normal
     scale plus a scope overlay. If real magnification is wanted later, do it as an offscreen
     second pass (option 2) rather than by narrowing the reported FOV.
-- **Still to verify (device):** Left Y toggles the scope cursor on the zoomable weapons; the
-  picture **keeps its normal scale** when zoomed; it restores instantly when zoom is off; no tiny
-  centre image and no stuck zoom; the scope sits centred in each eye.
+- **Still to verify (device):** Left Y does nothing and no scope art appears; the view keeps its
+  normal scale in all weapon/vehicle modes (no tiny centre image, no stuck FOV).
 
 ---
 
@@ -795,8 +802,14 @@ open / in-progress work, and each item's own entry says what to check.
 
 ## 23. Right A (view toggle) / Right B (transform) intermittent and sometimes swapped
 
-- **Status:** Open
+- **Status:** **Fixed in code (2026-10-13)** - the view-toggle half; needs a device pass.
 - **Priority:** Medium (core controls feel unreliable)
+- **Resolution (2026-10-13):** the "sometimes swapped / does nothing" behaviour was the game's own
+  **`B` = ChaseView** binding colliding with the face-key leak (cause 3 below). The fix is in #31:
+  Right A now toggles the view **directly** (`CVRStereo::ConsumeViewToggle` ->
+  `CRiotClientShell::SetExternalCamera`) instead of injecting the bound key, and the leaked raw
+  `B`'s key-driven `ChaseView` is ignored while a controller is live in gameplay. Right B (transform)
+  still injects `V`. See #31 for the code paths.
 - **Observed (device, 2026-10-12):** camera first/third person (A) and vehicle/mech change (B)
   work only some of the time and occasionally do the **opposite** of what was pressed.
 - **Suspected causes:**
@@ -903,7 +916,8 @@ open / in-progress work, and each item's own entry says what to check.
 
 ## 28. Hurt / explosion screen flash is not visible at all (comfort)
 
-- **Status:** Reopened (2026-10-13) - the new per-eye vignette **does not appear** on device.
+- **Status:** **Fixed - verified on device (2026-10-13)** - the peripheral flash works well; the
+  player confirms it (see the re-fix below).
 - **Priority:** Medium-High (no damage feedback; the player can't tell they're being hit)
 - **Device result (2026-10-13):** the player sees **no red (hurt) or white (explosion) flash at
   all** - the broken quad is gone, but so is the feedback. The tint is not reaching the draw, or the
@@ -924,54 +938,87 @@ open / in-progress work, and each item's own entry says what to check.
     active, in `ClearScreenTint()`, and in `HandleMPChangeLevel()`. Non-VR still uses the engine
     path unchanged.
   - `game/VRStereo.cpp/.h`: new `SetScreenFlash()` / `ClearScreenFlash()` store the tint, and
-    `DrawScreenFlash(nEye)` draws a clean **per-eye edge vignette** in the HUD 2D pass (beside the
-    #19 scope overlay): nested opaque frames whose outer band is the full tint and whose inner
-    bands ramp down, so the colour fades into the picture; the centre of vision is never covered.
-    Strength and edge thickness scale with the tint's brightest channel.
-- **Suspected causes to check (in order):**
-  1. **Branch:** is `g_VRStereo.IsActive()` true on the tint frames? If not, `UpdateScreenTint()`
-     never feeds `SetScreenFlash()` - log which branch runs.
-  2. **Coverage:** does every hurt/explosion tint really go through `TintScreen()` /
-     `UpdateScreenTint()`? `WeaponFX.cpp:606-689` may call `SetCameraLightAdd` **directly** and
-     bypass the VR reroute - log `SetScreenFlash()` calls against the triggering events.
-  3. **Timing:** is the HUD 2D pass (`Begin2D(nEye, DTRUE)`, where `DrawScreenFlash()` lives)
-     running on those frames (not a menu / movie / loading state)? A one-frame tint latched then
-     cleared before the pass would draw nothing - consider latching for several frames.
-  4. **Geometry / colour:** confirm the nested opaque frames land inside the eye rect and use a
-     non-keyed colour (`SetupColor1`'s 4th arg is a transparent-colour key) and that
-     `m_pfnFillRect` is the cached original.
-- **Fix direction:** instrument `SetScreenFlash` / `ClearScreenFlash` / `DrawScreenFlash` with log
-  lines (colour, frame, branch), reproduce a hurt and an explosion on device, and follow whichever
-  candidate the logs point to.
-- **Still to verify (device):** hurt shows a red edge vignette and explosions a white one; the
-  broken line/diagonal block stays gone; the vignette reads well and never covers the centre.
+    `DrawScreenFlash(nEye)` draws a clean **per-eye edge vignette** (nested opaque frames whose outer
+    band is the full tint and whose inner bands ramp down, so the colour fades into the picture; the
+    centre of vision is never covered). Strength and edge thickness scale with the tint's brightest
+    channel. **This first version drew inside the HUD 2D pass and did not reach the frame - see the
+    2026-10-13 re-fix.**
+- **Diagnosis (2026-10-13):** the tint *does* reach the mod - removing `SetCameraLightAdd` (which
+  alone killed the broken quad) only happens on the `g_VRStereo.IsActive()` branch, so
+  `SetScreenFlash()` was being fed. The miss was therefore the **draw location**: the vignette was
+  painted deep inside the HUD's optimized-2D block (`Begin2D(nEye, DTRUE)`), where the raw
+  `FillRect` fills did not reach the captured frame.
+- **Re-fix applied (2026-10-13):**
+  - Moved the draw onto the **same post-render path as the WinlatorXR sync pixel**, which is known
+    to land on the captured frame. New `CVRStereo::DrawScreenFlashFrame()` is called once after
+    `End3D()` in `RenderCamera()`, `UpdateMenuState()` and `UpdatePausedState()`, immediately before
+    `DrawXrSyncPixel()`; the old `Begin2D` call is removed. (`RiotClientShell.cpp` prose note edits
+    12, 13 and 19.)
+  - `DrawScreenFlash()` now fetches the screen surface itself (instead of relying on the 2D-pass
+    `m_hScreen`) and `DrawScreenFlashFrame()` falls back to `p->FillRect` if no stereo pass has
+    cached the original yet.
+  - Simplified to a **peripheral-vision flash**: `DrawScreenFlash()` now paints **two rectangles per
+    frame** - a full-height band down the *outer* edge of each eye (the left eye's left side, the
+    right eye's right side), 30% of the eye width. The earlier nested-frame vignette cost ~20
+    `FillRect` calls per frame, which was too heavy on device; this is 2. The centre of vision stays
+    clear, and the band reads as tunnel vision while being hit.
+  - Diagnostics: `SetScreenFlash()` logs on/off transitions with the colour; `DrawScreenFlash()`
+    logs the first draw (eye rect, colour). New `VRFlashTest` CVar (default 0) forces a red flash
+    every frame for testing (`VRFlashTest=1` under `[Game]` in `ShogoVR.ini`).
+  - **Verified on the PC:** with `VRFlashTest=1` each outer band reads saturated red (48,600 sampled
+    px; left band rect `0,0 - 216,900`); with it 0, none. Build clean, deployed.
+- **Verified on device (2026-10-13):** the player confirms the peripheral red (hurt) / white
+  (explosion) flash "works great" and is not too expensive.
 - **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `UpdateScreenTint`/`ClearScreenTint`/
   `HandleMPChangeLevel`; `WeaponFX.cpp:606-689` (explosion tint), `:6690` (hurt), `:9814` (pickup);
-  `game/VRStereo.cpp` `SetScreenFlash`/`ClearScreenFlash`/`DrawScreenFlash`; `game/VRStereo.h`.
+  `game/VRStereo.cpp` `SetScreenFlash`/`ClearScreenFlash`/`DrawScreenFlash`/`DrawScreenFlashFrame`;
+  `game/VRStereo.h`.
 
 ---
 
 ## 29. Muzzle flash is centred on the view instead of attached to the visible gun
 
-- **Status:** Open
+- **Status:** **Fixed in code (2026-10-13)** - needs a device pass to confirm.
 - **Priority:** Medium (immersion; the flash reads as coming from the player's face)
-- **Observed (device, 2026-10-13):** the muzzle flash now appears **centred in the player's view**
-  rather than at the muzzle of the visible 3D gun.
-- **Root cause / context:** the mod hides the game's real first-person weapon model and draws its
-  own gun at the hand pose (`CVRStereo::UpdateHeldGun`). Any effect the game anchors to the hidden
-  model - the muzzle flash / attached sprite - therefore appears where the hidden model sits (at or
-  near the camera), not at the visible gun. This is a specific, reproducible case of #27 ("shots
-  don't always appear to come from the weapon model") and should be fixed together with it.
-- **Fix direction:** see #27 - drive the flash (and the shot origin) from the visible gun's muzzle
-  node, or move the hidden model's muzzle to match the visible gun each frame.
-- **Refs:** `game/VRStereo.cpp` `UpdateHeldGun` / VR gun table; #27.
+- **Observed (device, 2026-10-13):** the muzzle flash appeared **centred in the player's view** /
+  above and behind the barrel, rather than at the muzzle of the visible 3D gun.
+- **Root cause:** the game positions the flash sprite from the **flat-screen** muzzle -
+  `CWeaponModel::m_vFlashPos = cameraPos + weaponOffset + muzzleOffset` (`WeaponModel.cpp`) - but VR
+  poses the gun in the hand (`AdjustWeaponPose` / `UpdateHeldGun`), so the flash sat where the
+  flat-screen gun would be: near the camera, above and behind the real barrel.
+- **Fix (2026-10-13):** the **visible** gun's muzzle is now computed each frame and used for the
+  sprite. The mod supplies it: `CVRStereo::GetMuzzleFlashWorld(nWeaponId, vCamPos, bFootScale, vOut)`
+  mirrors whichever gun is on show (`AdjustWeaponPose`'s first-person pose, or `UpdateHeldGun`'s
+  held pose) and offsets by the game's own `GetWeaponMuzzleOffset()` (scaled by the gun scale, since
+  the offset is in the model's local frame). In `CWeaponModel::UpdateWeaponModel()` the shell fills a
+  new **`m_vFlashDrawPos`** from it and `UpdateFlash()` draws the sprite there. `m_vFlashPos` - the
+  **shot origin** (sent in `MID_WEAPON_FIRE`) - is deliberately **left unchanged**, so aiming is not
+  disturbed. When VR is not posing the gun by hand the mod returns `DFALSE` and the draw position
+  falls back to `m_vFlashPos` (flat game unchanged).
+  - One log line per weapon (`VR muzzle flash: weapon N -> x,y,z (held|first-person gun)`) confirms
+    it engaged on device.
+- **Still to verify (device):** fire each weapon and confirm the flash sits at the barrel tip on the
+  first-person gun (the default) and on the held gun (`VRGunModel 1`). The held-gun muzzle uses the
+  first-person offset table, which may be a little off if the powerup model's origin differs.
+- **Refs:** `game/VRStereo.cpp` `GetMuzzleFlashWorld` / `AdjustWeaponPose` / `UpdateHeldGun` / VR gun
+  table; `ShogoSource/ClientShellDLL/WeaponModel.cpp` `UpdateWeaponModel` / `UpdateFlash`;
+  `ShogoSource/Shared/WeaponDefs.h` `GetWeaponMuzzleOffset`; `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`;
+  #27, #34.
 
 ---
 
 ## 30. Trim the in-game VR menu and pin the removed options to fixed defaults
 
-- **Status:** Open (requested 2026-10-13)
+- **Status:** **Fixed in code (2026-10-13)** - menu trimmed to 7 rows; needs a device pass.
 - **Priority:** Medium (clean-up; removes options that no longer do anything useful)
+- **Fix applied (2026-10-13):** `game/VRMenu.cpp` `s_Settings` trimmed 28 -> 7 rows
+  (`game/VRMenu.h` `VRMENU_ITEMS` 28 -> 7): the kept rows are dominant hand, hand roll flip,
+  turning, smooth turn speed, recentre view, reset to defaults and back (the action-row constants
+  `VRM_RECENTER`/`VRM_DEFAULTS`/`VRM_BACK` renumbered to 4/5/6). "hand roll flip" now reads
+  **off** (0) / **on** (1). The removed settings keep their pinned defaults: `VRSnapTurn`
+  (turning) -> 0 (smooth), `VRMoveDir` -> 1 (where you look), `VRTwoHand` -> 0 (off) and
+  `VRGunScaleMCA` -> 1.5 were corrected in the `CVRStereo` VarTrack `Init` calls; the rest
+  already matched. Build clean; deployed; PC smoke ok (new stamp `built Oct 13 2026 21:24:09`).
 - **Requested:** remove most of the in-game VR settings rows and hard-default them, leaving only a
   short list. The internal menu **virtual layout** from #5 is not a user row and stays as it is.
 - **Remove these rows, defaulting each to the value shown:**
@@ -1020,27 +1067,43 @@ open / in-progress work, and each item's own entry says what to check.
 
 ## 31. Right B doesn't toggle mech walking / vehicle mode (raw A/B keystrokes leak)
 
-- **Status:** Open (reported on device 2026-10-13)
+- **Status:** **Fixed in code (2026-10-13)** - needs a device pass (press **A** -> first/third
+  person, press **B** -> vehicle/mech transform; the view must no longer toggle from B).
 - **Priority:** Medium (core mech action)
-- **Observed (device, 2026-10-13):** pressing **B** does not toggle mech walking / vehicle mode
-  ("the transform") on/off in mech levels. The user's diagnosis: the **raw `B` keyboard letter is
-  still being passed to the game** (WinlatorXR sends the face-button letters in addition to the
-  mapped action), so the toggle misbehaves.
-- **Mapping is correct (no remap needed):** #15 maps **Right B -> TRANSFORM** (mech walking /
-  vehicle mode) and **Right A -> VIEWTOGGLE** (first/third-person camera). The user confirms B is
-  the intended button - the fault is the **leaked keystroke**, not the mapping.
-- **Requested fix:** **block the `A` and `B` keyboard letters from reaching the game except while
-  in the pause menu.** (They're wanted only in the pause menu; everywhere else they must be
-  swallowed so only the mapped actions fire.)
-- **Relationship to existing entries:** this is the face-key leak of **#17** (A/B/X/Y), whose fix
-  evidently still lets A/B through, and it feeds **#23** (A/B intermittent / swapped). The current
-  swallow only covers `IsControllerActive() && m_bGameplayInput && !m_bPlayerDead`
-  (`game/VRStereo.cpp` `ShouldSwallowFaceKey`), so it misses menus, transitions and the dead state.
-- **Fix direction:** widen the swallow so `A`/`B` are blocked in every state **except** the pause
-  menu (allow only there), rather than only during active gameplay. Confirm the raw bool indices
-  (10 = A, 11 = B) on device.
-- **Refs:** `game/VRStereo.cpp` `ShouldSwallowFaceKey` / `InjectCommandTap` / `RequestTransform`,
-  `CRiotClientShell::OnKeyDown` / `OnKeyUp`; #15, #17, #23.
+- **Observed (device, 2026-10-13):** pressing **B** toggles **third person**, and **A** does
+  nothing. Expected: **A** = first/third-person view, **B** = vehicle/mech transform (#15's
+  mapping, which is correct and unchanged).
+- **Root cause found (2026-10-13) - the game itself binds the view to `B`:**
+  - `defkeybd.cfg` / `autoexec.cfg` bind **ChaseView** (first/third person,
+    `COMMAND_ID_CHASEVIEWTOGGLE`) to scan code `##48` = the **letter `B`**, and
+    **VehicleModeToggle** to `##47` = the letter `V`.
+  - The mod's **Right A -> VIEWTOGGLE** was implemented as `InjectCommandTap(COMMAND_ID_CHASEVIEWTOGGLE)`,
+    i.e. it **injected the letter `B`** via `SendInput`. That injected key goes through the
+    engine's `OnKeyDown`, where the mod's own `ShouldSwallowFaceKey` (#17) drops `B` - so **A did
+    nothing**.
+  - WinlatorXR also leaks the raw face buttons as the letters X/Y/B/A. The leaked **`B`** reaches
+    the engine's command system as an **edge** command (the `IsCommandOn` hook only suppresses the
+    **held** path), so pressing **B** fired **ChaseView** -> third person, while the mod's intended
+    transform (`RequestTransform` -> injects `V`) was masked.
+- **Fix applied (2026-10-13) - route the view toggle directly, block the leaked key-driven one:**
+  - `game/VRStereo.{h,cpp}`: Right A no longer injects a key. It sets a one-shot request
+    (`m_bWantViewToggle`) exposed as `ConsumeViewToggle()`; also added `IsGameplayInput()`.
+  - `CRiotClientShell::Update()`: after `UpdateInput()`, `if (g_VRStereo.ConsumeViewToggle() &&
+    m_ePlayerState == PS_ALIVE && !m_bZoomView) SetExternalCamera(m_playerCamera.IsFirstPerson());`
+    - the same action the `COMMAND_ID_CHASEVIEWTOGGLE` case performs, but without a key press.
+  - `CRiotClientShell::OnCommandOn()` `COMMAND_ID_CHASEVIEWTOGGLE`: ignore the command while
+    `g_VRStereo.IsControllerActive() && g_VRStereo.IsGameplayInput()` (the leaked raw `B`), so the
+    key can no longer toggle the view out from under the controller. The keyboard still drives it
+    when no controller is live.
+  - **Right B -> TRANSFORM** is unchanged (`RequestTransform` injects `V`, which is neither
+    leaked nor swallowed), so it reaches `ToggleVehicleMode` as before.
+- **Note:** the OnKeyDown face-key swallow (#17) is kept; it still covers any state where the leak
+  does pass through the window-proc path. The decisive fix for the edge command is the
+  `OnCommandOn` guard above.
+- **Refs:** `game/VRStereo.cpp` `UpdateInput` / `ConsumeViewToggle`; `game/XrApiUDP.cpp:432-433`
+  (A -> VIEWTOGGLE, B -> TRANSFORM); `ShogoSource/ClientShellDLL/RiotClientShell.cpp`
+  `Update()` / `OnCommandOn()` / `OnKeyDown`; `defkeybd.cfg` / `autoexec.cfg`
+  (`ChaseView ##48`, `VehicleModeToggle ##47`); #15, #17, #23.
 
 ---
 
@@ -1115,12 +1178,15 @@ open / in-progress work, and each item's own entry says what to check.
   leak) are fixed in code and need on-device verification. #18 (Left-Y re-selects the equipped
   weapon to toggle zoom) is being **removed** with #19. #20 (crouch toggle/hold) - the VR body
   plays its crouch animation, but the camera never moves, so it is still **In progress**; the body
-  showing in third-person / cutscene views moved to #21. #23 (A/B view/transform) is intermittent
-  because the actions inject a foreground-gated key through a single shared slot, and the face-key
-  swallow (#17) does not cover every state. #31 (the `B` transform toggle breaks because the **raw
-  A/B keystrokes still leak** - block them everywhere except the pause menu; see #17) and #32 (jump
-  intermittently stops working, as if an input flag is stuck) are open (2026-10-13); #31 shares
-  #17's / #23's face-key leak and injection root cause. #22 (left-stick deadzone) still isn't
+  showing in third-person / cutscene views moved to #21. #23 (A/B view/transform) and #31 (Right B
+  didn't transform; the view toggled instead) are **fixed in code (2026-10-13)**: the game binds
+  ChaseView to the letter `B` (`defkeybd.cfg`), so the mod's old `InjectCommandTap(CHASEVIEWTOGGLE)`
+  injected a key the face-key swallow ate (A did nothing) while the leaked raw `B` fired ChaseView
+  (B went third-person). Right A now drives the view **directly**
+  (`CVRStereo::ConsumeViewToggle` -> `CRiotClientShell::SetExternalCamera`) and the key-driven
+  `ChaseView` is ignored while a controller is live in gameplay; Right B still injects `V` for the
+  transform. #32 (jump intermittently stops working, as if an input flag is stuck) is still open
+  (2026-10-13). #22 (left-stick deadzone) still isn't
   applied on device (2026-10-13) and needs a per-axis split. Also reconcile each XrApi bool index
   in `ButtonBits()` against the on-device bool string. See #9 for what should happen when the input
   feed itself stalls.
@@ -1143,16 +1209,19 @@ open / in-progress work, and each item's own entry says what to check.
   geometry.
 - **Weapon model / effects (#27, #29, #34):** the mod hides the game's real first-person weapon
   model and draws its own at the hand pose, so effects the game anchors to the hidden model (the
-  **muzzle flash**) appear at the hidden gun / camera rather than the visible gun (#29), the visible
-  gun sits **lower than the shot origin** (#34, hard to aim), and shot origins can diverge (#27).
-  Fix them together - drive the visible gun's placement, the muzzle flash and the projectile origin
-  from the same muzzle node (or align the hidden model's muzzle each frame), then verify the
-  vertical offset on device.
-- **Hurt / explosion flash (#28):** the engine camera light-add was replaced by a per-eye edge
-  vignette (opaque nested frames; the 2D API has no alpha), but the vignette **does not appear on
-  device** (2026-10-13) - no hurt/explosion feedback at all. Reopened: the tint is not reaching the
-  draw (a bad `IsActive` branch, a direct `SetCameraLightAdd` path in `WeaponFX.cpp`, or a
-  frame/state the HUD pass misses) - instrument and re-test.
+  **muzzle flash**) used to appear at the hidden gun / camera rather than the visible gun. **#29 is
+  fixed in code (2026-10-13):** the flash sprite is drawn at the visible gun's muzzle
+  (`CVRStereo::GetMuzzleFlashWorld` + `CWeaponModel::m_vFlashDrawPos`), while the shot origin
+  (`m_vFlashPos`) is left alone - so aiming is untouched. Still open: the visible gun sits **lower
+  than the shot origin** (#34) and shot origins can diverge (#27); if the flash's new spot proves
+  slightly off on device, the same visible-muzzle helper is the place to nudge.
+- **Hurt / explosion flash (#28):** the engine camera light-add was replaced by a mod-drawn flash
+  (opaque fills; the 2D API has no alpha). The first version drew inside the HUD 2D pass and **did
+  not reach the captured frame** (invisible on device, 2026-10-13), so the draw moved onto the
+  **post-render path beside the sync pixel** (`DrawScreenFlashFrame()` after `End3D()`), and the
+  flash is now just **two rectangles per frame** - a full-height band down the outer edge of each eye
+  (a peripheral-vision flash), instead of the earlier ~20-fill nested vignette that was too heavy on
+  device. **Verified on device (2026-10-13):** the player confirms it works and is cheap enough.
 - **2D content per eye (#5, #6, #10, #12):** menus, splash, movies and the loading/bumper
   screens must all be centered in each eye; the engine video player runs in `Client.exe` and is
   the one case that can't be re-projected from `CShell.dll`. **#5's menu virtual-layout is

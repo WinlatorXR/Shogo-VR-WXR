@@ -153,6 +153,7 @@ CVRStereo::CVRStereo()
 	VEC_SET(m_vRightF, 0.0f, 0.0f, 1.0f);	VEC_SET(m_vRightU, 0.0f, 1.0f, 0.0f);	VEC_INIT(m_vRightP);
 	VEC_SET(m_vLeftF, 0.0f, 0.0f, 1.0f);	VEC_SET(m_vLeftU, 0.0f, 1.0f, 0.0f);	VEC_INIT(m_vLeftP);
 	m_bGameplayInput		= DFALSE;
+	m_bWantViewToggle		= DFALSE;
 	m_nSuppressed			= 0;
 	m_bAimByHand			= DFALSE;
 	m_bPlayerDead			= DFALSE;
@@ -280,7 +281,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtHeadPosition.Init	(pClientDE, "VRHeadPosition",	NULL, 1.0f);
 	m_vtControllers.Init	(pClientDE, "VRControllers",	NULL, 1.0f);
 	m_vtAimMode.Init		(pClientDE, "VRAimMode",		NULL, 1.0f);
-	m_vtSnapTurn.Init		(pClientDE, "VRSnapTurn",		NULL, 45.0f);
+	m_vtSnapTurn.Init		(pClientDE, "VRSnapTurn",		NULL, 0.0f);
 	m_vtTurnSpeed.Init		(pClientDE, "VRTurnSpeed",		NULL, 150.0f);
 	m_vtGunX.Init			(pClientDE, "VRGunX",			NULL, 0.0f);
 	m_vtGunY.Init			(pClientDE, "VRGunY",			NULL, 0.0f);
@@ -290,11 +291,11 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtGameCrosshair.Init	(pClientDE, "VRGameCrosshair",	NULL, 0.0f);
 	m_vtAimDotSize.Init		(pClientDE, "VRAimDotSize",		NULL, 1.0f);
 	m_vtGunScale.Init		(pClientDE, "VRGunScale",		NULL, 1.5f);
-	m_vtGunScaleMCA.Init	(pClientDE, "VRGunScaleMCA",	NULL, 1.0f);
+	m_vtGunScaleMCA.Init	(pClientDE, "VRGunScaleMCA",	NULL, 1.5f);
 	m_vtFixRenderer.Init	(pClientDE, "VRFixRenderer",	NULL, 1.0f);
 	m_vtVRFullscreen.Init	(pClientDE, "VRFullscreen",		NULL, 1.0f);
-	m_vtMoveDir.Init		(pClientDE, "VRMoveDir",		NULL, 0.0f);
-	m_vtTwoHand.Init		(pClientDE, "VRTwoHand",		NULL, 1.0f);
+	m_vtMoveDir.Init		(pClientDE, "VRMoveDir",		NULL, 1.0f);
+	m_vtTwoHand.Init		(pClientDE, "VRTwoHand",		NULL, 0.0f);
 	m_vtHandFlip.Init		(pClientDE, "VRHandFlip",		NULL, 0.0f);
 	m_vtBody.Init			(pClientDE, "VRBody",			NULL, 1.0f);
 	m_vtBodyArms.Init		(pClientDE, "VRBodyArms",		NULL, 0.0f);
@@ -305,6 +306,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtAutoBridge.Init		(pClientDE, "VRAutoBridge",		NULL, 1.0f);
 	m_vtHaptics.Init		(pClientDE, "VRHaptics",		NULL, 1.0f);
 	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 1.0f);
+	m_vtFlashTest.Init		(pClientDE, "VRFlashTest",		NULL, 0.0f);
 	m_vtDirectCapture.Init	(pClientDE, "VRDirectCapture",	NULL, 1.0f);
 	m_vtHeldPitch.Init		(pClientDE, "VRHeldPitch",		NULL, 0.0f);
 	m_vtHeldYaw.Init		(pClientDE, "VRHeldYaw",		NULL, 0.0f);
@@ -540,10 +542,13 @@ DBOOL CVRStereo::GetMenuLayoutSize(int *pW, int *pH)
 // a clean per-eye edge vignette (DrawScreenFlash).
 void CVRStereo::SetScreenFlash(DFLOAT r, DFLOAT g, DFLOAT b)
 {
+	DBOOL bWas = m_bFlash;
 	m_fFlashR = r;
 	m_fFlashG = g;
 	m_fFlashB = b;
 	m_bFlash = (r > 0.0f || g > 0.0f || b > 0.0f) ? DTRUE : DFALSE;
+	if (m_bFlash != bWas) Log("VR flash %s (%.2f, %.2f, %.2f)", m_bFlash ? "on" : "off",
+							  (double)r, (double)g, (double)b);
 }
 
 void CVRStereo::ClearScreenFlash()
@@ -1133,12 +1138,6 @@ void CVRStereo::Begin2D(int nEye, DBOOL bHud)
 	ComputeXform(nEye, fCrossSX, fCrossSY, -EyeSign(nEye) * fDisparity, m_fVirtW, m_fVirtH, m_xfCross);
 
 	InstallHooks();
-
-	// Hurt/explosion vignette (#28): only for the HUD pass, over the world, under the HUD.
-	if (bHud)
-	{
-		DrawScreenFlash(nEye);
-	}
 }
 
 void CVRStereo::End2D()
@@ -1154,17 +1153,19 @@ void CVRStereo::End2D()
 	m_fVirtH = (DFLOAT)m_nScreenH;
 }
 
-// Screen flash (#28): a per-eye edge vignette that stands in for the game's
-// hurt (red) / explosion (white) full-screen flash.  The shell feeds the tint
-// colour (SetScreenFlash) instead of using the engine camera light-add, whose
-// full-screen quad breaks under the stereo render.  Drawn with opaque fills
-// (the 2D API has no alpha): nested frames whose outer band is the full tint
-// and whose inner bands ramp down, so the colour fades into the picture.  The
-// vignette only ever touches the edges - the centre of vision stays clear,
-// which is the comfortable choice for VR.
+// Screen flash (#28): one opaque band down the *outer* edge of each eye - the
+// left eye's left side and the right eye's right side - standing in for the
+// game's hurt (red) / explosion (white) full-screen flash.  The shell feeds the
+// tint colour (SetScreenFlash) instead of using the engine camera light-add,
+// whose full-screen quad breaks under the stereo render.  Two filled rectangles
+// per frame: cheap, and it reads as a peripheral-vision ("tunnel vision") flash
+// without covering the centre of view.
 void CVRStereo::DrawScreenFlash(int nEye)
 {
-	if (!m_bFlash || !m_pClientDE || !m_hScreen || !m_pfnFillRect) return;
+	if (!m_bFlash || !m_pClientDE || !m_pfnFillRect) return;
+
+	HSURFACE hScreen = m_pClientDE->GetScreenSurface();
+	if (!hScreen) return;
 
 	int nLeft = 0, nRight = 0;
 	GetHalfRect(nEye, nLeft, nRight);
@@ -1174,52 +1175,43 @@ void CVRStereo::DrawScreenFlash(int nEye)
 
 	DFLOAT fR = m_fFlashR, fG = m_fFlashG, fB = m_fFlashB;
 
-	// Strength = the tint's brightest channel; the edge grows with it.
+	// Strength = the tint's brightest channel; the band widens with it.
 	DFLOAT fStr = fR;
 	if (fG > fStr) fStr = fG;
 	if (fB > fStr) fStr = fB;
 	if (fStr <= 0.001f) return;
 	if (fStr > 1.0f) fStr = 1.0f;
 
-	int nShort = (nEyeW < nEyeH) ? nEyeW : nEyeH;
-	int nMax = (int)(0.16f * (DFLOAT)nShort);
-	if (nMax < 6) nMax = 6;
-	int nThick = (int)(fStr * (DFLOAT)nMax);
-	if (nThick < 2) nThick = 2;
+	int nBand = (int)(fStr * 0.30f * (DFLOAT)nEyeW);
+	if (nBand < 4) nBand = 4;
+	if (nBand > nEyeW) nBand = nEyeW;
 
-	// Nested frames, outermost = full tint, inner bands dimmer (a fake falloff).
-	const int nBands = 5;
-	int nBandW = nThick / nBands;
-	if (nBandW < 1) nBandW = 1;
-
-	for (int i = 0; i < nBands; i++)
+	DRect rc;
+	rc.top		= 0;
+	rc.bottom	= nEyeH;
+	if (nLeft <= 0)
 	{
-		DFLOAT f = 1.0f - (DFLOAT)i * (0.8f / (DFLOAT)nBands);
-		if (f < 0.2f) f = 0.2f;
-
-		HDECOLOR col = m_pClientDE->SetupColor1(fR * f, fG * f, fB * f, DFALSE);
-
-		int L = nLeft + i * nBandW;
-		int R = nRight - i * nBandW;
-		int T = i * nBandW;
-		int B = nEyeH - i * nBandW;
-		if (R - L < 4 || B - T < 4) break;
-
-		int q = nBandW;
-		if (R - L < 2 * q + 2) q = (R - L - 2) / 2;
-		if (B - T < 2 * q + 2) q = (B - T - 2) / 2;
-		if (q < 1) break;
-
-		DRect rc;
-		rc.left = L; rc.top = T; rc.right = R; rc.bottom = T + q;
-		m_pfnFillRect(m_hScreen, &rc, col);
-		rc.left = L; rc.top = B - q; rc.right = R; rc.bottom = B;
-		m_pfnFillRect(m_hScreen, &rc, col);
-		rc.left = L; rc.top = T + q; rc.right = L + q; rc.bottom = B - q;
-		m_pfnFillRect(m_hScreen, &rc, col);
-		rc.left = R - q; rc.top = T + q; rc.right = R; rc.bottom = B - q;
-		m_pfnFillRect(m_hScreen, &rc, col);
+		// Left eye: band down its left (outer) edge.
+		rc.left		= nLeft;
+		rc.right	= nLeft + nBand;
 	}
+	else
+	{
+		// Right eye: band down its right (outer) edge.
+		rc.left		= nRight - nBand;
+		rc.right	= nRight;
+	}
+
+	static DBOOL s_bLogged = DFALSE;
+	if (!s_bLogged)
+	{
+		Log("VR flash drawn: eye %d rect %d,0 - %d,%d, col %.2f,%.2f,%.2f",
+			nEye, rc.left, rc.right, nEyeH, (double)fR, (double)fG, (double)fB);
+		s_bLogged = DTRUE;
+	}
+
+	HDECOLOR col = m_pClientDE->SetupColor1(fR, fG, fB, DFALSE);
+	m_pfnFillRect(hScreen, &rc, col);
 }
 
 // The engine's movie player (inside Client.exe) draws the Smacker frame
@@ -2033,6 +2025,34 @@ void CVRStereo::RequestRecenter()
 	{
 		m_pClientDE->CPrint("VR: the headset link isn't running.");
 	}
+}
+
+// Screen flash (#28), once per frame: force the diagnostic colour when
+// VRFlashTest is on, then paint the hurt/explosion vignette into every eye.
+// Called on the same post-render path as the sync pixel (after the world and
+// the HUD, before the frame is presented) so the fills land on the frame the
+// runtime captures.
+void CVRStereo::DrawScreenFlashFrame()
+{
+	if (!m_pClientDE) return;
+
+	// The post-render path can run before any stereo Begin2D has cached the
+	// original FillRect; take it now if the hooks aren't holding the slot.
+	if (!m_pfnFillRect && !m_bHooked) m_pfnFillRect = m_pClientDE->FillRect;
+	if (!m_pfnFillRect) return;
+
+	if (m_vtFlashTest.GetFloat(0.0f) != 0.0f)
+	{
+		m_fFlashR = 1.0f;
+		m_fFlashG = 0.0f;
+		m_fFlashB = 0.0f;
+		m_bFlash  = DTRUE;
+	}
+
+	if (!m_bFlash) return;
+
+	int nEyes = GetNumEyes();
+	for (int nEye = 0; nEye < nEyes; nEye++) DrawScreenFlash(nEye);
 }
 
 // WinlatorXR reads a shade of red from the top-left corner of the captured
@@ -3403,6 +3423,7 @@ void CVRStereo::UpdateInput()
 	{
 		m_bGameplayInput = DFALSE;
 		m_bCrouchOn = DFALSE;
+		m_bWantViewToggle = DFALSE;
 		return;
 	}
 
@@ -3439,8 +3460,13 @@ void CVRStereo::UpdateInput()
 		if ((nPress & SHOGOVR_BTN_LEFT_TRIGGER) && m_bPlayerDead)
 			InjectCommandTap(COMMAND_ID_QUICKLOAD);
 
-		// Right A: first/third person view.
-		if (nPress & SHOGOVR_BTN_VIEWTOGGLE)	InjectCommandTap(COMMAND_ID_CHASEVIEWTOGGLE);
+		// Right A: first/third person view.  The shell performs this directly
+		// when it polls ConsumeViewToggle() - don't inject the game's bound key
+		// here.  Shogo binds ChaseView to the letter B ("##48"), which is one of
+		// the face keys WinlatorXR also leaks; an injected B is swallowed by the
+		// face-key filter (so A did nothing) and the leaked B toggled the view
+		// on the B button (#23/#31).
+		if (nPress & SHOGOVR_BTN_VIEWTOGGLE)	m_bWantViewToggle = DTRUE;
 		// Right stick click: recentre the view.
 		if (nPress & SHOGOVR_BTN_RECENTER)		RequestRecenter();
 		// Right B: transform vehicle/mech.
@@ -3468,6 +3494,15 @@ void CVRStereo::UpdateInput()
 		if (nPress & SHOGOVR_BTN_CROUCH)		InjectScanTap(0x0E, DFALSE);	// Backspace (back)
 		if (nPress & SHOGOVR_BTN_MENU)			InjectScanTap(0x01, DFALSE);	// Esc
 	}
+}
+
+// Right A: hand the first/third-person view toggle to the shell, which performs
+// it directly (see CRiotClientShell::Update).  One-shot: clears on read.
+DBOOL CVRStereo::ConsumeViewToggle()
+{
+	DBOOL b = m_bWantViewToggle;
+	m_bWantViewToggle = DFALSE;
+	return b;
 }
 
 void CVRStereo::SetBodyAnim(const char* szAnim, DBOOL bLoop)
@@ -3821,4 +3856,80 @@ void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &
 	pClientDE->SetObjectRotation(m_hHeldGun, &rRot);
 	pClientDE->SetObjectScale(m_hHeldGun, &vScale);
 	pClientDE->SetObjectFlags(m_hHeldGun, FLAG_VISIBLE | FLAG_MODELGOURAUDSHADE);
+}
+
+// Muzzle flash placement (#29): the game puts its flash sprite at the
+// flat-screen muzzle - up near the camera - but VR holds the gun in the hand,
+// so the flash ends up above and behind the barrel.  Work out where the visible
+// gun's barrel actually ends, in world space, so the shell can draw the sprite
+// there.  Returns DFALSE when VR isn't posing the gun by hand, so the shell
+// keeps the game's own position and the flat game is unchanged.
+DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut)
+{
+	if (!m_pClientDE || !m_bAimByHand) return DFALSE;
+
+	// Is the mod drawing its own third-person gun for this weapon?  (Same test
+	// as UpdateHeldGun - keep the two in step.)
+	const HeldGunModel* pDef = DNULL;
+	int i;
+	for (i = 0; s_HeldGuns[i].nId >= 0; i++) if (s_HeldGuns[i].nId == nWeaponId) pDef = &s_HeldGuns[i];
+	DBOOL bHeld = m_vtGunModel.GetFloat(1.0f) != 0.0f && pDef;
+
+	DVector vPos, vR, vU, vF, vT;
+	DFLOAT fScale;
+	DVector vHandPos, vHandF, vHandU;
+	GetHandWorld(vCamPos, vHandPos, vHandF, vHandU);
+
+	DRotation rRot;
+
+	if (bHeld)
+	{
+		// Mirror the placement UpdateHeldGun() gives the held gun.
+		m_pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
+		DFLOAT fPitch = m_vtHeldPitch.GetFloat(0.0f), fYaw = m_vtHeldYaw.GetFloat(0.0f), fRoll = m_vtHeldRoll.GetFloat(0.0f);
+		if (fYaw != 0.0f)	m_pClientDE->EulerRotateY(&rRot, VR_DEG2RAD(fYaw));
+		if (fPitch != 0.0f)	m_pClientDE->EulerRotateX(&rRot, VR_DEG2RAD(fPitch));
+		if (fRoll != 0.0f)	m_pClientDE->EulerRotateZ(&rRot, VR_DEG2RAD(fRoll));
+		m_pClientDE->GetRotationVectors(&rRot, &vU, &vR, &vF);
+
+		VEC_COPY(vPos, vHandPos);
+		VEC_MULSCALAR(vT, vR, m_vtHeldX.GetFloat(0.0f)); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vU, m_vtHeldY.GetFloat(0.0f)); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vF, m_vtHeldZ.GetFloat(0.0f)); VEC_ADD(vPos, vPos, vT);
+
+		fScale = m_vtHeldScale.GetFloat(1.0f);
+		if (fScale < 0.1f) fScale = 0.1f;
+	}
+	else
+	{
+		// Mirror the placement AdjustWeaponPose() gives the first-person model.
+		m_pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
+		m_pClientDE->GetRotationVectors(&rRot, &vU, &vR, &vF);
+
+		fScale = bFootScale ? m_vtGunScale.GetFloat(1.5f) : m_vtGunScaleMCA.GetFloat(1.0f);
+		if (fScale < 0.2f) fScale = 0.2f;
+
+		VEC_COPY(vPos, vHandPos);
+		VEC_MULSCALAR(vT, vR, m_vtGunX.GetFloat(0.0f) * fScale); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vU, m_vtGunY.GetFloat(0.0f) * fScale); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vF, m_vtGunZ.GetFloat(0.0f) * fScale); VEC_ADD(vPos, vPos, vT);
+	}
+
+	// The muzzle offset is in the model's own frame (x right, y up, z forward)
+	// and the model is scaled about its origin, so scale the offset too.
+	DVector vMuzzle = GetWeaponMuzzleOffset((RiotWeaponId)nWeaponId, W_FIRED);
+	VEC_MULSCALAR(vT, vR, vMuzzle.x * fScale); VEC_ADD(vOut, vPos, vT);
+	VEC_MULSCALAR(vT, vU, vMuzzle.y * fScale); VEC_ADD(vOut, vOut, vT);
+	VEC_MULSCALAR(vT, vF, vMuzzle.z * fScale); VEC_ADD(vOut, vOut, vT);
+
+	// One line per weapon, so a device run can confirm the flash moved.
+	static int s_nLoggedMuzzle = -1;
+	if (s_nLoggedMuzzle != nWeaponId)
+	{
+		s_nLoggedMuzzle = nWeaponId;
+		Log("VR muzzle flash: weapon %d -> %.1f,%.1f,%.1f (%s gun)",
+			nWeaponId, (double)vOut.x, (double)vOut.y, (double)vOut.z, bHeld ? "held" : "first-person");
+	}
+
+	return DTRUE;
 }

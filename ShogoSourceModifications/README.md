@@ -43,10 +43,10 @@ ShogoSourceModifications/
 | `ClientShellDLL/OptionsMenu.h`   | Adds the `CVRMenu` sub-menu member and its lifecycle calls. |
 | `ClientShellDLL/OptionsMenu.cpp` | Adds the "vr" item to the Options menu and routes to the VR sub-menu. |
 | `ClientShellDLL/PlayerStats.cpp` | Brackets the two crosshair draw sites with `g_VRStereo.BeginCrosshair()`/`EndCrosshair()` so the mod can hide the game crosshair by default and otherwise place it at aim depth. |
-| `ClientShellDLL/RiotClientShell.cpp` | Mounts `CVRStereo`/`g_VRStereo`: init/term/update, console `VRRecenter`, head tracking, aim depth, mech mode, player body + crouch state, the stereo-aware `RenderCamera`, the per-eye menu/pause render, the right-half splash, the per-eye intro-movie clone, the dead-state feed, the VR menu-size re-layout poll, and the per-eye hurt/explosion flash (which replaces the engine camera light-add). |
+| `ClientShellDLL/RiotClientShell.cpp` | Mounts `CVRStereo`/`g_VRStereo`: init/term/update, console `VRRecenter`, head tracking, aim depth, mech mode, player body + crouch state, the stereo-aware `RenderCamera`, the per-eye menu/pause render, the right-half splash, the per-eye intro-movie clone, the dead-state feed, the VR menu-size re-layout poll, the per-eye hurt/explosion flash (which replaces the engine camera light-add), the leaked face-button key drop (`OnKeyDown`/`OnKeyUp`), the direct Right-A view toggle (`Update`) and the guard that ignores the leaked key-driven `ChaseView` (`OnCommandOn`). |
 | `ClientShellDLL/RiotMenu.cpp`    | Asks `g_VRStereo` for the virtual menu layout size in `ScreenDimsChanged()` so the options/pause tree lays out legibly in the headset. |
 | `ClientShellDLL/RiotClientShell.h`   | Declares the `m_bMovieShiftRight` member used by the intro-movie clone. |
-| `ClientShellDLL/WeaponModel.cpp` | Lets `g_VRStereo` place and scale the first-person weapon in the tracked hand. |
+| `ClientShellDLL/WeaponModel.cpp` | Lets `g_VRStereo` place and scale the first-person weapon in the tracked hand, and draw its muzzle-flash sprite at the visible gun's muzzle (keeping the shot origin as it was). |
 | `ClientShellDLL/Sparam.cpp`      | `const char*` build fixes for the modern compiler (not VR-specific). |
 
 The VR modules these edits call into (`VRStereo.*`, `VRMenu.*`, `XrApiUDP.*`,

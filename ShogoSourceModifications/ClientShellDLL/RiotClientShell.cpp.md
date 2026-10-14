@@ -298,12 +298,17 @@ for (int nEye = 0; nEye < nNumEyes; nEye++)
 }
 ```
 
-**Step D — frame-sync marker.** Immediately after your existing `End3D()` call,
+**Step D — post-render overlays.** Immediately after your existing `End3D()` call,
 add (our code):
 
 ```cpp
+g_VRStereo.DrawScreenFlashFrame();
 g_VRStereo.DrawXrSyncPixel();
 ```
+
+`DrawScreenFlashFrame()` paints the hurt/explosion vignette (#28) into each eye;
+like the sync pixel it runs after the 3D and 2D passes, on the frame the runtime
+captures.
 
 ---
 
@@ -322,14 +327,14 @@ true render the polygrid through `RenderStereo` in `VR3D_PANEL_FLAT` mode (the
 per-eye panel transform is identical to the 2D one, so the background lines up
 with the menu), and draw the 2D content once per eye inside
 `g_VRStereo.Begin2D(nEye, DFALSE)` / `End2D()`, finishing with
-`g_VRStereo.DrawXrSyncPixel()`. When a stereo frame is not active the original
-flat behaviour is unchanged.
+`g_VRStereo.DrawScreenFlashFrame()` then `g_VRStereo.DrawXrSyncPixel()`. When a
+stereo frame is not active the original flat behaviour is unchanged.
 
 There are no lines to copy from the original — this is a change in control flow
 around calls you already have. The only mod lines are the `BeginFrame` /
-`IsStereoFrame` / `RenderStereo` / `Begin2D` / `End2D` / `DrawXrSyncPixel`
-calls, and the loop that brackets the existing `m_menu.Draw()` (or the
-`m_hGamePausedSurface` blit) per eye.
+`IsStereoFrame` / `RenderStereo` / `Begin2D` / `End2D` / `DrawScreenFlashFrame` /
+`DrawXrSyncPixel` calls, and the loop that brackets the existing `m_menu.Draw()`
+(or the `m_hGamePausedSurface` blit) per eye.
 
 ---
 
@@ -528,4 +533,73 @@ and, where the function ends:
 and `HandleMPChangeLevel()` gains the same line in its "Clear screen tint"
 section. Leave every other original line (the ramp maths, the intersection test,
 the non-VR `SetCameraLightAdd` calls) unchanged.
+
+The mod draws the tint on its **post-render** path: `g_VRStereo.DrawScreenFlashFrame()`
+is called once after `End3D()` in `RenderCamera()`, `UpdateMenuState()` and
+`UpdatePausedState()` (edits 12 and 13 above), beside `DrawXrSyncPixel()`. Drawing
+the flash there - rather than inside the optimized-2D HUD block - is what makes it
+land on the frame the runtime captures. The flash itself is two opaque rectangles per
+frame: a band down the outer edge of the left eye and of the right eye (a
+peripheral-vision flash), so it is cheap enough for the headset. `VRFlashTest` (a mod
+CVar, default 0) forces a red flash every frame for testing.
+
+---
+
+## 20. `CRiotClientShell::Update()` - Right A toggles the view directly
+
+**Part of:** `CRiotClientShell::Update()`, immediately after the existing
+`g_VRStereo.UpdateInput();` call (pristine around line 1742).
+
+The game binds the first/third-person view (**ChaseView**,
+`COMMAND_ID_CHASEVIEWTOGGLE`) to the keyboard letter **`B`**
+(`defkeybd.cfg`/`autoexec.cfg`: `rangebind ... "##48" ... "ChaseView"`). The mod used
+to fire Right A by injecting that bound key, but WinlatorXR also leaks the raw face
+buttons as the letters X/Y/B/A, so an injected `B` was swallowed by the face-key
+filter (A did nothing) while the leaked `B` still toggled the view from the B button.
+The mod now performs the toggle itself, once per frame, from the A button request.
+Add (our code):
+
+```cpp
+	// Right A toggles the first/third-person view.  Done here rather than by
+	// injecting the game's bound ChaseView key: Shogo binds that view to the
+	// keyboard letter B (defkeybd.cfg "##48"), which is one of the raw face keys
+	// WinlatorXR also leaks, so an injected B is swallowed by the face-key
+	// filter (A did nothing) and the leaked B toggled the view from B (#23/#31).
+	if (g_VRStereo.ConsumeViewToggle() && m_ePlayerState == PS_ALIVE && !m_bZoomView)
+	{
+		SetExternalCamera(m_playerCamera.IsFirstPerson());
+	}
+```
+
+`ConsumeViewToggle()` (`game/VRStereo.cpp`) is a one-shot flag set when the XrApi A
+button edge arrives; the shell performs the same `SetExternalCamera()` call the
+`COMMAND_ID_CHASEVIEWTOGGLE` command case uses. See `Docs/BUGS_TO_FIX.md` #31/#23.
+
+---
+
+## 21. `CRiotClientShell::OnCommandOn()` - ignore the leaked key-driven ChaseView
+
+**Part of:** the existing `case COMMAND_ID_CHASEVIEWTOGGLE :` block in
+`CRiotClientShell::OnCommandOn()` (pristine around line 4428).
+
+WinlatorXR's leaked face letters can still reach the engine's command **edge** path
+(the mod's `IsCommandOn` hook only suppresses the **held** path), so the letter `B`
+would fire ChaseView while a controller is live. The A button now drives the view
+directly (edit 20 above), so ignore the key-driven toggle in that state. Add (our
+code) at the top of the case:
+
+```cpp
+			// While a controller is live in gameplay the A button drives the
+			// view (see Update()).  WinlatorXR also leaks the raw face letters
+			// into the command system, and the letter B is bound to ChaseView,
+			// so a leaked B would still toggle the view from the B button.
+			// Ignore the key-driven toggle in that state - the mod owns it
+			// (#23/#31).
+			if (g_VRStereo.IsControllerActive() && g_VRStereo.IsGameplayInput()) break;
+```
+
+Leave the original `if (m_ePlayerState == PS_ALIVE && !m_bZoomView)
+SetExternalCamera(...)` below it unchanged, so a real keyboard still toggles the view
+when no controller is live. `IsGameplayInput()` is a new accessor in
+`game/VRStereo.h`. See `Docs/BUGS_TO_FIX.md` #31/#23.
 
