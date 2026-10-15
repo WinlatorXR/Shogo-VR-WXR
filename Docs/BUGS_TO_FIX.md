@@ -10,17 +10,18 @@ Legend: `Open` / `In progress` / `Fixed in code` (awaiting a device pass) / `Fix
 ## Status at a glance
 
 Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #16, #17**,
-**#19** (zoom stays removed; the view fills normally), **#20** (the crouch *body animation* only -
-the camera half is still open), **#23/#31** (Right-A view toggle), **#27** (shots track the visible
-gun), **#28** (the peripheral hurt/explosion flash - 2026-10-13), **#29** (muzzle flash at the
-visible gun's muzzle; the on-foot dual pistols keep the game's own alternating flashes), **#30** (VR
-menu trimmed to 7 rows), **#21** (the VR body no longer shows in third-person / cutscene / death
-views - user-confirmed), **#34** (the gun no longer sits below the shot origin), **#35** (dominant
-hand - user-confirmed) and **#36** (Right B transform). #4 and #9 were verified with the WinlatorXR
-XrApi UDP Tester rather than in the headset. **Removed / cancelled:** #7 (supersampling not pursued),
-#18 (zoom re-select, folded into #19), #24/#25/#33 (the autosave family - players can save/load
-manually if they hit an issue instead) and #32 (jump - appears fixed on device). **Fixed in code,
-awaiting a device pass:** #22 (per-axis left-stick dead zone) and #26 (intro video moved down 1/8).
+**#19** (zoom stays removed; the view fills normally), **#23/#31** (Right-A view toggle), **#27**
+(shots track the visible gun), **#28** (the peripheral hurt/explosion flash - 2026-10-13), **#29**
+(muzzle flash at the visible gun's muzzle; the on-foot dual pistols keep the game's own alternating
+flashes), **#30** (VR menu trimmed to 7 rows), **#21** (the VR body no longer shows in
+third-person / cutscene / death views - user-confirmed), **#34** (the gun no longer sits below the
+shot origin), **#35** (dominant hand - user-confirmed) and **#36** (Right B transform). #4 and #9
+were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed /
+cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #19), #24/#25/#33 (the
+autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
+appears fixed on device). **Fixed in code, awaiting a device pass:** #12 (loading/bumper/credits
+drawn per eye), #20 (crouch now lowers the eyes), #22 (per-axis left-stick dead zone) and #26 (intro
+video moved down 1/8 + 50 px).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -35,7 +36,7 @@ awaiting a device pass:** #22 (per-axis left-stick dead zone) and #26 (intro vid
 | 9  | Game runs on when headset stalls | Fixed - verified (tester) |
 | 10 | Intro logo/movie mono | Fixed - verified (intro offset: #26) |
 | 11 | Motion-controller movement | Fixed - verified |
-| 12 | Loading/bumper/credits screens mono | Open (confirmed; fix like #5) |
+| 12 | Loading/bumper/credits screens mono | Fixed in code (2026-10-14) - per-eye; needs a device pass |
 | 13 | Render resolution 640x480 | Fixed - verified |
 | 14 | Crosshair on by default | Fixed - verified |
 | 15 | Controller mapping | Fixed - verified (individual controls: #22) |
@@ -43,13 +44,13 @@ awaiting a device pass:** #22 (per-axis left-stick dead zone) and #26 (intro vid
 | 17 | Face buttons leak X/Y/B/A | Fixed - verified (A/B leak: #31) |
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
-| 20 | Crouch doesn't lower the VR camera | In progress (body crouch works; camera not lowered) |
+| 20 | Crouch doesn't lower the VR camera | Fixed in code (2026-10-14) - eyes lower; needs a device pass |
 | 21 | Body shown in 3rd-person / cutscenes | Fixed - verified (2026-10-14, user-confirmed) |
 | 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis; needs a device pass |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
-| 26 | Intro video too high | Fixed in code (2026-10-14) - moved down 1/8; needs a device pass |
+| 26 | Intro video too high | Fixed in code (2026-10-14) - moved down 1/8 + 50 px; needs a device pass |
 | 27 | Shots vs weapon model | Fixed - verified (2026-10-14) |
 | 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
 | 29 | Muzzle flash centred on the view | Fixed - verified (2026-10-14); dual pistols excluded |
@@ -63,15 +64,18 @@ awaiting a device pass:** #22 (per-axis left-stick dead zone) and #26 (intro vid
 
 ## Open items (as of 2026-10-14)
 
-Everything else in the table below is fixed/verified or removed. The **only open bugs left** are:
+No tracked bug is still **open**: everything is either fixed/verified or fixed in code awaiting a
+device pass, and a few items were removed/cancelled.
+
+**Fixed in code, awaiting a device pass:**
 
 - **#12 - Loading / bumper / credits screens render mono** (text unreadable, split across both
-  eyes; fix to mirror #5).
-- **#20 - Crouch doesn't lower the VR camera** (the body crouch animation works; the eye height
-  never moves).
-
-**Fixed in code, awaiting a device pass:** #22 (per-axis left-stick dead zone - forward/back 0.08,
-strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
+  eyes). Now drawn per eye like the menus (#5); the credits are laid out on the mod's small virtual
+  screen so their text stays centred and legible in each eye.
+- **#20 - Crouch doesn't lower the VR camera**. The eyes now drop while the crouch controls are on
+  (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
+- **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20).
+- **#26 - intro video moved down ~1/8 of the screen plus 50 px.**
 
 ---
 
@@ -472,8 +476,7 @@ strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
 
 ## 12. Loading / bumper / credits screens render mono (text unreadable, split across both eyes)
 
-- **Status:** Open (re-confirmed on device 2026-10-13; the **credits screen** re-reported 2026-10-14;
-  fix to mirror #5)
+- **Status:** Fixed in code (2026-10-14) - awaiting device verification (mirrors #5)
 - **Priority:** Medium (same flat-2D-per-eye class as #5 / #6 / #10)
 - **Observed:** The level **loading** screen (and the bumper screen) is drawn once, centered, on
   the full SBS canvas. With SBS active the runtime reads one image, so each eye sees half of one
@@ -512,6 +515,23 @@ strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
      background. Less correct than per-eye but a one-place change.
 - **Still to verify:** on device at 2800x1400 - loading/bumper art centered **and its text legible
   in both eyes** with no seam-split; no regression in the loading -> level transition.
+- **Fix applied (2026-10-14, option 1 - per-eye, mirror #5):**
+  - `RiotClientShell.cpp` `UpdateLoadingLevelState()` and `UpdateBumperState()` now mirror
+    `UpdateMenuState()`: begin the frame (`g_VRStereo.BeginFrame(DTRUE, DFALSE)`), render the
+    animated polygrid through the panel in stereo (`RenderStereo` of `m_pMenuPolygrid`), then draw
+    the 2D loading art / press-any-key blit once per eye between
+    `g_VRStereo.Begin2D(nEye, DFALSE)` / `End2D()`, and finish with `DrawScreenFlashFrame()` /
+    `DrawXrSyncPixel()`.
+  - The credits / intro states (`UpdateCreditsState`, `UpdateIntroState`, `UpdateGameOver`,
+    `UpdateDemoMultiplayerState`) now call a new helper `UpdateCreditsStereo()`, which wraps
+    `m_credits.Update()` in the same per-eye pass.
+  - `Credits.cpp` now lays the credits out on the mod's small virtual screen
+    (`g_VRStereo.GetMenuLayoutSize()`), so the per-eye `Hook_GetSurfaceDims` substitution +
+    `Hook_DrawStringToSurface` remap put the text centred in each eye and even pick the larger
+    font. No `RenderStereo` is needed for the 2D art itself - the per-eye 2D xform handles it.
+  - Notes: `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md` (edit 22),
+    `RiotClientShell.h.md` (edit 2), `Credits.cpp.md` (new). Mod side is `game/VRStereo.cpp`
+    `Begin2D` / `End2D` / `Hook_GetSurfaceDims` (already present from #5).
 
 ---
 
@@ -738,8 +758,7 @@ strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
 
 ## 20. Crouch doesn't lower the VR camera (Left X toggle, Left stick click hold)
 
-- **Status:** In progress - the crouch **body animation** works, but the **VR camera never moves**
-  (device 2026-10-13).
+- **Status:** Fixed in code (2026-10-14) - awaiting device verification (crouch now drops the eyes).
 - **Priority:** Medium (dead inputs; may matter on later levels / low gaps)
 - **Observed (device, 2026-10-12):** Left X (crouch toggle) and Left stick click (crouch hold)
   give no visible crouch.
@@ -763,10 +782,15 @@ strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
 - **Device result (2026-10-13):** only the third-person body model reacts to crouch - the camera
   stays put, so VR shows no crouch effect. (That body also shows in third-person / cutscene views
   and is missing geometry - both tracked in #21.)
-- **Still open (the real fix):** lower the camera while crouched. Shogo has no on-foot crouch, so
-  add a mod-side eye-height offset applied while `IsCrouchOn()` is true (subtract a fixed amount
-  from the HMD world position in the eye/`RenderStereo` path), ideally eased in/out so it isn't
-  jarring.
+- **Fix applied (2026-10-14, camera eye-height):** the mod now lowers the HMD world position while
+  crouched. New `CVRStereo::UpdateCrouchOffset()` (called at the top of `UpdateInput()`, so it runs
+  every frame) eases `m_fCrouchAmt` (0 standing .. 1 ducked) toward `IsCrouchOn()` at ~8/s. In
+  `RenderStereo()`, when the frame is a tracked immersive one, that amount is subtracted along the
+  body's up axis from `vBasePos`:
+  `fDrop = m_fCrouchAmt * VRCrouchDrop * fWorldScale` (new `VRCrouchDrop` setting, default `0.6` m).
+  So the whole stereo view (and the held weapon / aim, which are anchored to the eyes) drops
+  smoothly and lifts back on release. No ShogoSource change - entirely in `game/VRStereo.cpp` /
+  `game/VRStereo.h`.
 - **Refs:** `game/XrApiUDP.cpp:435-436`; `game/VRStereo.cpp:2131-2141`
   (`VRCommandOn`/`COMMAND_ID_DUCK`), `game/VRStereo.h:373` (`m_bCrouchOn`);
   `ShogoSource/ClientShellDLL/CMoveMgr.cpp:178-181, 725-728, 835-838`;
@@ -919,6 +943,10 @@ strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
 - **Fix applied (2026-10-14):** the two clones (and the not-detected fallback) are now drawn at
   `y = screenHeight / 8`, clamped to `screenHeight - frameHeight` so a full-height frame still lands
   fully on-screen. Build clean (712704 bytes), deployed; needs a device pass.
+- **Follow-up (2026-10-14):** the user asked for a further **~50 px lower**, so the offset is now
+  `y = screenHeight / 8 + 50` (still clamped to `screenHeight - frameHeight`; when the film is taller
+  than half the screen the clamp keeps it valid). Build clean (713728 bytes), deployed; needs a
+  device pass.
 
 ---
 

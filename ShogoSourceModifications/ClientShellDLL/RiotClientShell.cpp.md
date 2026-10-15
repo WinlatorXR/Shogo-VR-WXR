@@ -623,3 +623,53 @@ SetExternalCamera(...)` below it unchanged, so a real keyboard still toggles the
 when no controller is live. `IsGameplayInput()` is a new accessor in
 `game/VRStereo.h`. See `Docs/BUGS_TO_FIX.md` #31/#23.
 
+---
+
+## 22. Loading / bumper / credits drawn per eye (`UpdateLoadingLevelState`, `UpdateBumperState`, `UpdateCreditsStereo`)
+
+**Part of:** `CRiotClientShell::UpdateLoadingLevelState()` (pristine line 2515),
+`CRiotClientShell::UpdateBumperState()` (pristine line 2467), the credits/intro
+state updates (`UpdateCreditsState`, `UpdateIntroState`, `UpdateGameOver`,
+`UpdateDemoMultiplayerState`), and a new helper `CRiotClientShell::UpdateCreditsStereo()`
+(its declaration is a separate edit in `RiotClientShell.h`).
+
+The level **loading** screen, the **bumper** ("press any key") screen and the
+**credits** / intro text are flat 2D drawn straight to the full SBS window, so in
+VR the runtime reads one picture and each eye sees half of it (mono / split).
+They now go through the same per-eye treatment as the menus (#5/#6).
+
+`UpdateLoadingLevelState()` and `UpdateBumperState()` mirror `UpdateMenuState()`:
+begin the frame, render the animated polygrid through the panel in stereo, then
+draw the 2D art once per eye between `Begin2D(nEye, DFALSE)` / `End2D()`. The
+loading blit in `UpdateLoadingLevelState()` becomes (our code):
+
+```cpp
+	g_VRStereo.BeginFrame(DTRUE, DFALSE);
+	DBOOL bStereo = g_VRStereo.IsStereoFrame();
+	... Start3D + (bStereo ? RenderStereo(polygrid) : UpdateMenuPolygrid()) ...
+	for (int nEye = 0; nEye < (bStereo ? g_VRStereo.GetNumEyes() : 1); nEye++)
+	{
+		pClientDE->StartOptimized2D();
+		if (bStereo) g_VRStereo.Begin2D(nEye, DFALSE);
+		UpdateLoadingLevel();
+		if (bStereo) g_VRStereo.End2D();
+		pClientDE->EndOptimized2D();
+	}
+	...
+	g_VRStereo.DrawScreenFlashFrame();
+	if (bStereo) g_VRStereo.DrawXrSyncPixel();
+```
+
+The bumper state does the same, with its `m_hPressAnyKey` blit moved inside the
+per-eye loop. The credits / intro states, which just called
+`pClientDE->Start3D(); UpdateMenuPolygrid(); m_credits.Update(); pClientDE->End3D();`,
+now call the new helper `UpdateCreditsStereo()`, which performs the same per-eye
+wrap around `m_credits.Update()`.
+
+`Begin2D` installs the 2D hooks and makes `GetSurfaceDims(hScreen)` report the
+mod's small virtual screen (`Hook_GetSurfaceDims`), so the existing centred-layout
+math in `UpdateLoadingLevel()` and the credits lands inside the virtual canvas and
+is then scaled per eye. The credits themselves are laid out on that virtual canvas
+by a matching change in `Credits.cpp` (see `Credits.cpp.md`). See
+`Docs/BUGS_TO_FIX.md` #12.
+

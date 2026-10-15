@@ -159,6 +159,7 @@ CVRStereo::CVRStereo()
 	m_bAimByHand			= DFALSE;
 	m_bPlayerDead			= DFALSE;
 	m_bCrouchOn				= DFALSE;
+	m_fCrouchAmt			= 0.0f;
 	m_bAutosavePending		= DFALSE;
 	m_nAutosaveFrames		= 0;
 	m_bHaveBody				= DFALSE;
@@ -301,6 +302,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtBody.Init			(pClientDE, "VRBody",			NULL, 1.0f);
 	m_vtBodyArms.Init		(pClientDE, "VRBodyArms",		NULL, 0.0f);
 	m_vtBodyOffset.Init		(pClientDE, "VRBodyOffset",		NULL, 0.15f);
+	m_vtCrouchDrop.Init		(pClientDE, "VRCrouchDrop",		NULL, 0.6f);
 	m_vtGunModel.Init		(pClientDE, "VRGunModel",		NULL, 0.0f);
 	m_vtGunArms.Init		(pClientDE, "VRGunArms",		NULL, 1.0f);
 	m_vtEasyLadders.Init	(pClientDE, "VREasyLadders",	NULL, 1.0f);
@@ -903,6 +905,15 @@ void CVRStereo::RenderStereo(HLOCALOBJ hCamera, HLOCALOBJ* pObjects, int nObject
 			VEC_ADD(vBasePos, vBasePos, vOff);
 		}
 
+		// Crouch (#20): the game never ducks on foot, so lower the eyes along
+		// the body's up axis while the crouch controls are on.
+		if (m_fCrouchAmt > 0.0f)
+		{
+			DFLOAT fDrop = m_fCrouchAmt * m_vtCrouchDrop.GetFloat(0.6f) * fWorldScale;
+			VEC_MULSCALAR(vT, bU, fDrop);
+			VEC_SUB(vBasePos, vBasePos, vT);
+		}
+
 		pClientDE->SetObjectRotation(hCamera, &rRender);
 	}
 
@@ -1292,9 +1303,9 @@ void CVRStereo::ShiftMovieToRightHalf()
 		int xL = (int)nW / 4 - vw / 2;			// middle of the left half
 		int xR = (int)nW - (int)nW / 4 - vw / 2;	// middle of the right half
 		// Sit the movie a little lower than screen centre: the user wanted the
-		// intro ~1/8 of the screen height down from the top.  Clamp so a
-		// full-height frame still lands fully on-screen.
-		int yOff = (int)nH / 8;
+		// intro ~1/8 of the screen height down from the top, then ~50px more.
+		// Clamp so a full-height frame still lands fully on-screen.
+		int yOff = (int)nH / 8 + 50;
 		if (vh + yOff > (int)nH) yOff = (int)nH - vh;
 		if (yOff < 0) yOff = 0;
 		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xL, yOff);
@@ -1304,7 +1315,7 @@ void CVRStereo::ShiftMovieToRightHalf()
 	{
 		// Couldn't find the movie: keep the plain right-half slide, lowered by
 		// the same amount (#26).
-		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, (int)nH / 8);
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, (int)nH / 8 + 50);
 	}
 
 	m_pClientDE->EndOptimized2D();
@@ -3479,6 +3490,8 @@ void CVRStereo::UpdateInput()
 	ReleaseInjectedKey();
 	if (m_bTransformKeyDown && (long)(GetTickCount() - m_nTransformUpTick) >= 0) ReleaseTransformKey();
 
+	UpdateCrouchOffset();
+
 	if (!IsControllerActive())
 	{
 		m_bGameplayInput = DFALSE;
@@ -3596,6 +3609,25 @@ DBOOL CVRStereo::IsCrouchOn()
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
 	DDWORD nHeld = m_nButtons & ~m_nSuppressed;
 	return (m_bCrouchOn || (nHeld & SHOGOVR_BTN_CROUCH_HOLD)) ? DTRUE : DFALSE;
+}
+
+// Crouch eye-height (#20).  The game never ducks on foot, so while the crouch
+// controls are on we lower the HMD world position ourselves (applied in
+// RenderStereo).  Eased so the drop/lift isn't jarring.
+void CVRStereo::UpdateCrouchOffset()
+{
+	DFLOAT fTarget = IsCrouchOn() ? 1.0f : 0.0f;
+
+	DFLOAT fFrameTime = m_pClientDE ? m_pClientDE->GetFrameTime() : 0.0f;
+	if (fFrameTime < 0.0f) fFrameTime = 0.0f;
+	if (fFrameTime > 0.1f) fFrameTime = 0.1f;
+
+	DFLOAT k = fFrameTime * 8.0f;
+	if (k > 1.0f) k = 1.0f;
+
+	m_fCrouchAmt += (fTarget - m_fCrouchAmt) * k;
+	if (m_fCrouchAmt < 0.001f) m_fCrouchAmt = 0.0f;
+	if (m_fCrouchAmt > 0.999f) m_fCrouchAmt = 1.0f;
 }
 
 void CVRStereo::UpdateBody(HLOCALOBJ hPlayerObj, int nModelId, DBOOL bShow, DBOOL bCrouching)

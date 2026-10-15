@@ -32,3 +32,19 @@ It is initialised to `DFALSE` in the constructor and set from
 `g_VRStereo.IsActive()` each time an intro movie starts. See the
 `RiotClientShell.cpp.md` note (edit 15) for its use in `PlayIntroMovies()` and
 `UpdateMoviesState()`, and `Docs/BUGS_TO_FIX.md` #10.
+
+---
+
+## 2. `void UpdateCreditsStereo()` declaration
+
+**Part of:** the state-update method group, beside `UpdateCreditsState()` /
+`UpdateDemoInfoState()` (pristine line 602).
+
+Add (our code):
+
+```cpp
+		void	UpdateCreditsStereo();	// draw credits/intro per eye (#12)
+```
+
+Defined in `RiotClientShell.cpp` (see that note, edit 22). See
+`Docs/BUGS_TO_FIX.md` #12.

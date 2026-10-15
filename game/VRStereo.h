@@ -247,6 +247,7 @@ class CVRStereo
 		DBOOL	SkipThisDraw();
 		void	ComputeLayout();
 		void	DrawScreenFlash(int nEye);
+		void	UpdateCrouchOffset();	// ease the crouch eye-height offset (#20)
 
 		// Headset link helpers
 		void	OpenShared();
@@ -407,6 +408,7 @@ class CVRStereo
 		DBOOL		m_bAimByHand;		// this frame's aim comes from the right hand
 		DBOOL		m_bPlayerDead;		// the player is dead (left trigger quick-loads)
 		DBOOL		m_bCrouchOn;		// crouch toggle state (X button)
+		DFLOAT		m_fCrouchAmt;		// eased crouch amount 0..1, lowers the eyes (#20)
 		DBOOL		m_bAutosavePending;	// a level just loaded - quicksave once playable (#16)
 		int			m_nAutosaveFrames;	// frames of continuous play since the level loaded
 		DBOOL		m_bHaveBody;
@@ -516,6 +518,7 @@ class CVRStereo
 		VarTrack	m_vtBody;			// VRBody           1 = show your body
 		VarTrack	m_vtBodyArms;		// VRBodyArms       1 = show the body's arms too (they can't follow your hands)
 		VarTrack	m_vtBodyOffset;		// VRBodyOffset     metres the body sits behind your eyes
+		VarTrack	m_vtCrouchDrop;		// VRCrouchDrop     metres to lower the eyes while crouched (#20)
 		VarTrack	m_vtGunModel;		// VRGunModel       1 = third-person gun (no arms), 0 = first-person model with arms
 		VarTrack	m_vtHeldPitch;		// VRHeldPitch/Yaw/Roll  degrees, to correct the held gun's angle
 		VarTrack	m_vtHeldYaw;
