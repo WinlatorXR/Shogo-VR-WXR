@@ -519,6 +519,9 @@ class CVRStereo
 		VarTrack	m_vtBodyArms;		// VRBodyArms       1 = show the body's arms too (they can't follow your hands)
 		VarTrack	m_vtBodyOffset;		// VRBodyOffset     metres the body sits behind your eyes
 		VarTrack	m_vtCrouchDrop;		// VRCrouchDrop     metres to lower the eyes while crouched (#20)
+		VarTrack	m_vtMoveDeadZoneX;	// VRMoveDeadZoneX  left stick left/right dead zone, 0..1 (#22)
+		VarTrack	m_vtMoveDeadZoneY;	// VRMoveDeadZoneY  left stick forward/back dead zone, 0..1 (#22)
+		VarTrack	m_vtWeaponSwapDead;	// VRWeaponSwapDead right stick up/down dead zone to change weapon, 0..1 (#37)
 		VarTrack	m_vtGunModel;		// VRGunModel       1 = third-person gun (no arms), 0 = first-person model with arms
 		VarTrack	m_vtHeldPitch;		// VRHeldPitch/Yaw/Roll  degrees, to correct the held gun's angle
 		VarTrack	m_vtHeldYaw;

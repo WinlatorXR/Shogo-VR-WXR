@@ -13,7 +13,7 @@ Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #
 **#19** (zoom stays removed; the view fills normally), **#23/#31** (Right-A view toggle), **#27**
 (shots track the visible gun), **#28** (the peripheral hurt/explosion flash - 2026-10-13), **#29**
 (muzzle flash at the visible gun's muzzle; the on-foot dual pistols keep the game's own alternating
-flashes), **#30** (VR menu trimmed to 7 rows), **#21** (the VR body no longer shows in
+flashes), **#30** (VR menu trimmed), **#21** (the VR body no longer shows in
 third-person / cutscene / death views - user-confirmed), **#34** (the gun no longer sits below the
 shot origin), **#35** (dominant hand - user-confirmed) and **#36** (Right B transform). #4 and #9
 were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed /
@@ -46,7 +46,7 @@ weapon-swap dead zone).
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
 | 20 | Crouch doesn't lower the VR camera | Fixed in code (2026-10-14) - eyes + gun lower; needs a device pass |
 | 21 | Body shown in 3rd-person / cutscenes | Fixed - verified (2026-10-14, user-confirmed) |
-| 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis (strafe 20%); needs a device pass |
+| 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis (strafe 20%); now tunable (see below); needs a device pass |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
@@ -61,7 +61,7 @@ weapon-swap dead zone).
 | 34 | Weapon model lower than shot origin | Fixed - verified (2026-10-14) |
 | 35 | Left/right dominant hand does nothing | Fixed - verified (2026-10-14, user-confirmed) |
 | 36 | Right B (transform) needs repeated taps | Fixed - verified (2026-10-14) |
-| 37 | Right-stick up/down swaps weapons too easily | Fixed in code (2026-10-14) - needs a device pass |
+| 37 | Right-stick up/down swaps weapons too easily | Fixed in code (2026-10-14) - now tunable (see below); needs a device pass |
 
 ## Open items (as of 2026-10-14)
 
@@ -72,8 +72,11 @@ device pass, and a few items were removed/cancelled.
 
 - **#20 - Crouch doesn't lower the VR camera**. The eyes **and the held gun** now drop while the
   crouch controls are on (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
-- **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20 = 20%).
+- **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20 = 20%). Both values are now
+  live settings - `VRMoveDeadZoneX` (left/right) and `VRMoveDeadZoneY` (forward/back) - in the config
+  (`ShogoVR.ini`) and on the VR screen (Options > vr settings), so they can be tuned in the headset.
 - **#37 - right-stick up/down weapon swap** now needs a deliberate push (engage 0.80, re-arm 0.45).
+  The press threshold is the live setting `VRWeaponSwapDead` (config + VR screen).
 
 ---
 
@@ -857,6 +860,11 @@ device pass, and a few items were removed/cancelled.
 - **Follow-up (2026-10-14):** device feedback asked for **≈20%** left/right with forward/back left
   as-is (8%). Strafe is already `0.20` (20%), so that value is kept and the comment now states it;
   rebuilt and redeployed so the headset is on the current value.
+- **Exposed as settings (2026-10-14):** both axes are now live console variables, so they can be
+  tuned in the config file or in the headset. `VRMoveDeadZoneX` (strafe left/right, default 0.20) and
+  `VRMoveDeadZoneY` (forward/back, default 0.08) replace the hard-coded values; they are clamped to
+  `0..0.95` so the rescale divisor stays positive. Added as the "dead zone left/right" and "dead zone
+  fwd/back" rows on the VR screen (Options > vr settings). Build clean (715264 bytes), deployed.
 - **Refs:** `game/VRStereo.cpp:2260-2286` (`GetMoveAxes`), `:2230-2241` (`VRCommandOn` movement),
   #11, #37.
 
@@ -1337,6 +1345,10 @@ device pass, and a few items were removed/cancelled.
   `fSwapPress = 0.80` and re-arms only below `fSwapReset = 0.45` (hysteresis), so a light up/down
   nudge no longer cycles weapons. Turning is still suppressed by `StickTurn()` while the stick is
   pushed mostly vertically (`|turnY| > 0.6 && |turnY| > |turnX|`), unchanged.
+- **Exposed as a setting (2026-10-14):** the press threshold is now the live console variable
+  `VRWeaponSwapDead` (default 0.80, clamped to `0..1`); the reset stays 0.35 below it. Added as the
+  "weapon swap dead zone" row on the VR screen (Options > vr settings). Build clean (715264 bytes),
+  deployed.
 - **Refs:** `game/VRStereo.cpp` `PollWeaponCycle`, `StickTurn`; #15, #22.
 
 ---

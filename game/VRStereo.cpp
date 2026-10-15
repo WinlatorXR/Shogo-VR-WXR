@@ -303,6 +303,9 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtBodyArms.Init		(pClientDE, "VRBodyArms",		NULL, 0.0f);
 	m_vtBodyOffset.Init		(pClientDE, "VRBodyOffset",		NULL, 0.15f);
 	m_vtCrouchDrop.Init		(pClientDE, "VRCrouchDrop",		NULL, 0.6f);
+	m_vtMoveDeadZoneX.Init	(pClientDE, "VRMoveDeadZoneX",	NULL, 0.20f);
+	m_vtMoveDeadZoneY.Init	(pClientDE, "VRMoveDeadZoneY",	NULL, 0.08f);
+	m_vtWeaponSwapDead.Init	(pClientDE, "VRWeaponSwapDead",	NULL, 0.80f);
 	m_vtGunModel.Init		(pClientDE, "VRGunModel",		NULL, 0.0f);
 	m_vtGunArms.Init		(pClientDE, "VRGunArms",		NULL, 1.0f);
 	m_vtEasyLadders.Init	(pClientDE, "VREasyLadders",	NULL, 1.0f);
@@ -2291,8 +2294,13 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	// forward push doesn't drift into a diagonal, and a smaller one
 	// forward/back (the most common input).  Each axis is rescaled from its
 	// own dead-zone edge back to 0..1 so movement still starts gently.
-	const DFLOAT fDeadFwd  = 0.08f;		// forward / back    (5-10%)
-	const DFLOAT fDeadSide = 0.20f;		// strafe left/right (20%)
+	// Tunable in ShogoVR.ini / Options > vr settings (values are 0..1).
+	DFLOAT fDeadFwd  = m_vtMoveDeadZoneY.GetFloat(0.08f);	// forward / back
+	DFLOAT fDeadSide = m_vtMoveDeadZoneX.GetFloat(0.20f);	// strafe left/right
+	if (fDeadFwd  < 0.0f) fDeadFwd  = 0.0f;
+	if (fDeadFwd  > 0.95f) fDeadFwd  = 0.95f;		// keep (1 - dead) > 0
+	if (fDeadSide < 0.0f) fDeadSide = 0.0f;
+	if (fDeadSide > 0.95f) fDeadSide = 0.95f;
 
 	DFLOAT ax = (DFLOAT)fabs(m_fMoveX);
 	DFLOAT ay = (DFLOAT)fabs(m_fMoveY);
@@ -2459,8 +2467,13 @@ int CVRStereo::PollWeaponCycle()
 	// a light nudge - or drift while turning - doesn't cycle weapons by
 	// accident: the stick has to clear this dead zone before a swap fires, and
 	// fall back below the (lower) reset before it can fire again (hysteresis).
-	const DFLOAT fSwapPress = 0.80f;
-	const DFLOAT fSwapReset = 0.45f;
+	// Tunable in ShogoVR.ini / Options > vr settings: the VRWeaponSwapDead
+	// dead zone is the press threshold; the reset sits 0.35 below it.
+	DFLOAT fSwapPress = m_vtWeaponSwapDead.GetFloat(0.80f);
+	if (fSwapPress < 0.0f) fSwapPress = 0.0f;
+	if (fSwapPress > 1.0f) fSwapPress = 1.0f;
+	DFLOAT fSwapReset = fSwapPress - 0.35f;
+	if (fSwapReset < 0.0f) fSwapReset = 0.0f;
 
 	DFLOAT y = m_fTurnY, ax = (DFLOAT)fabs(m_fTurnX), ay = (DFLOAT)fabs(m_fTurnY);
 	if (m_nWeaponLatch == 0 && ay > fSwapPress && ay > ax)
