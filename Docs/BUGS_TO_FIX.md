@@ -20,8 +20,7 @@ were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. *
 cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #19), #24/#25/#33 (the
 autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
 appears fixed on device). **Fixed in code, awaiting a device pass:** #12 (loading/bumper/credits
-drawn per eye), #20 (crouch now lowers the eyes), #22 (per-axis left-stick dead zone) and #26 (intro
-video moved down 1/8 + 50 px; the whole-window fallback that clipped its bottom is fixed).
+drawn per eye), #20 (crouch now lowers the eyes) and #22 (per-axis left-stick dead zone).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -50,7 +49,7 @@ video moved down 1/8 + 50 px; the whole-window fallback that clipped its bottom 
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
-| 26 | Intro video too high | Fixed in code (2026-10-14) - moved down 1/8 + 50 px; bottom-clip fallback fixed; needs a device pass |
+| 26 | Intro video too high | Fixed - verified (2026-10-14) |
 | 27 | Shots vs weapon model | Fixed - verified (2026-10-14) |
 | 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
 | 29 | Muzzle flash centred on the view | Fixed - verified (2026-10-14); dual pistols excluded |
@@ -75,9 +74,6 @@ device pass, and a few items were removed/cancelled.
 - **#20 - Crouch doesn't lower the VR camera**. The eyes now drop while the crouch controls are on
   (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
 - **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20).
-- **#26 - intro video moved down ~1/8 of the screen plus 50 px.** The whole-window fallback (used
-  when the movie frame isn't detected) no longer applies that offset, which was clipping the bottom;
-  detection was also made more robust so the offset still applies when the frame is found.
 
 ---
 
@@ -935,7 +931,7 @@ device pass, and a few items were removed/cancelled.
 
 ## 26. Intro video sits slightly too high; move it down ~1/8
 
-- **Status:** **Fixed in code (2026-10-14)** - needs a device pass to confirm.
+- **Status:** **Fixed - verified on device (2026-10-14)** ("the video is perfect now").
 - **Priority:** Low (comfort / polish)
 - **Observed (device, 2026-10-12):** the intro movie is a little too high on screen; the user
   wants it about **1/8 of the screen height lower** from the top.
@@ -959,8 +955,9 @@ device pass, and a few items were removed/cancelled.
   lowered without clipping); (b) `DetectMovieSource()` now finds the **vertical extent first** down
   five columns, then scans six rows (the old three **plus** three inside the found video) so the
   result is a strict superset of the old box on the same frame and can't regress. Build clean
-  (713728 bytes), deployed, PC smoke ok (`movie source detected` logged, no crash). Needs a device
-  pass.
+  (713728 bytes), deployed, PC smoke ok (`movie source detected` logged, no crash).
+- **Verified on device (2026-10-14):** the owner tested the intro after this build - "the video is
+  perfect now". No bottom clip and the lowered position is right.
 
 ---
 
