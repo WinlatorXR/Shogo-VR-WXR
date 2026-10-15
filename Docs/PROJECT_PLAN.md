@@ -356,7 +356,7 @@ autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
 **removed/cancelled** - players save/load manually. No bug is still **open**: #20
 (crouch lowers the eyes and the held gun), #22 (single left-stick dead zone, 15%),
 #37 (right-stick weapon-swap dead zone), #38 (the Keyboard / Mouse / Joystick pages are
-hidden) and #39 (selecting Quit confirms itself) are **fixed in code (14-15 Oct)**, now
+hidden) and #39 (Quit exits immediately) are **fixed in code (14-15 Oct)**, now
 tunable / present on the VR screen and in the config, awaiting a device pass; #12
 (loading/bumper/credits) and #26 (intro-video y-offset + 50 px) are **fixed and verified
 on device (14 Oct)**.
@@ -390,7 +390,7 @@ not the phase statuses above, is the current source of truth. As of the 15 Oct
 2026 pass no bug is still **open**: #21 was confirmed verified by the user, and
 #20 (crouch lowers the eyes **and the held gun**), #22 (single left-stick dead zone, 15%),
 #37 (right-stick weapon-swap dead zone), #38 (the Keyboard / Mouse / Joystick pages are
-hidden from Options) and #39 (selecting Quit confirms itself) are **fixed in code** - the
+hidden from Options) and #39 (Quit exits immediately) are **fixed in code** - the
 dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`) on the VR screen
 and in `ShogoVR.ini`, awaiting a device pass, while #12 (loading/bumper/credits per eye) and #26 (intro-video
 offset + 50 px) are **fixed and verified on device**. `#4` (fire) and `#9` (sync hold)
@@ -573,10 +573,11 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   Screen, Sound, vr and Back. The rows were removed from `LoadSurfaces()`, the matching `Return()`
   branches deleted, and the item-count loops reduced from seven to four. Documented as section 6 in
   `ShogoSourceModifications/ClientShellDLL/OptionsMenu.cpp.md`. Build clean; awaiting a device pass.
-- **#39 Quit confirms itself (fixed in code, 15 Oct)** - the Exit item's "are you sure?" box waits for
-  the Y key, which the controllers cannot easily send, so `CMainMenu::Return()` now asks the mod to
-  tap Y (`CVRStereo::InjectKeyTap`, scan code `0x15`) as soon as the box appears. Documented in the new
-  `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean; awaiting a device pass.
+- **#39 Quit exits immediately (fixed in code, 15 Oct)** - the Exit item used to show an "are you
+  sure?" box that waits for the Y key, which the controllers cannot easily send. `CMainMenu::Return()`
+  now calls `ExitGame(DTRUE, 0)` directly, so the box is never created and Quit is a single action.
+  Documented in the new `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean;
+  awaiting a device pass.
 
 This brings the tracked ShogoSource notes to **eleven** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`, `Credits.cpp` and `MainMenu.cpp`).
@@ -606,7 +607,7 @@ The immediate next actions are:
 4. **Device-verify the last in-code fixes.** No tracked bug is still open: #20
    (crouch lowers the eyes **and the held gun**), #22 (single left-stick dead zone, 15%),
    #37 (right-stick weapon-swap dead zone), #38 (Keyboard / Mouse / Joystick pages hidden)
-   and #39 (Quit confirms itself) are **fixed in code (14-15 Oct)** and await a device pass;
+   and #39 (Quit exits immediately) are **fixed in code (14-15 Oct)** and await a device pass;
    the move and weapon-swap dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`)
    on the VR screen and in `ShogoVR.ini`, so they can be tuned in the headset. #12 (loading /
    bumper / **credits** screen per eye) and #26 (intro-video y-offset + 50 px) are **fixed and

@@ -1,45 +1,32 @@
 # ShogoSource/ClientShellDLL/MainMenu.cpp
 
-**Goal:** submitting the "Quit" (Exit) option confirms the "are you sure?"
-message box for the player, so quitting is a single action in VR.
+**Goal:** selecting the "Quit" (Exit) option quits immediately in VR, instead of
+showing an "are you sure?" message box the controller cannot answer.
 
-The Exit item shows a yes/no box (`IDS_SUREWANTQUIT`) that waits for the
+The Exit item showed a yes/no box (`IDS_SUREWANTQUIT`) that waits for the
 configured "yes" key (the keyboard letter **Y**). In VR the motion controllers
-have no convenient Y, so the box would dead-end. The VR module already injects
-keyboard input for the menus (arrow keys, Enter); the shell now asks it to tap Y
-as soon as the box is created.
+have no convenient Y, so the box dead-ends. The shell now runs the box's own
+"yes" action directly and never shows the box.
 
 Line numbers below refer to the pristine `shogosrc/ClientShellDLL/MainMenu.cpp`;
 your copy may differ by a few lines.
 
 | Edit | Anchor in pristine file |
 |------|-------------------------|
-| 1. `#include "VRStereo.h"` | beside the other includes (pristine line 7) |
-| 2. exit branch in `CMainMenu::Return` | pristine line 111 |
+| 1. exit branch in `CMainMenu::Return` | pristine line 111 |
 
 ---
 
-## 1. Include the VR module
-
-Add, beside the other includes (our code):
-
-```cpp
-#include "VRStereo.h"
-```
-
-## 2. `CMainMenu::Return` — confirm the quit
+## 1. `CMainMenu::Return` — quit on select
 
 In the branch that handles the Exit selection (`m_nSelection == 4`), the pristine
-code only shows the yes/no box. See whether the box was created and, if so, ask
-the VR module to tap the Y key for the player (our code):
+code calls `DoYesNoMessageBox(IDS_SUREWANTQUIT, ExitGame, ...)`. Replace that with
+a direct call to the same "yes" action (`ExitGame` is already declared at the top
+of the file) so no box is created (our code):
 
 ```cpp
-	if (pClientShell->DoYesNoMessageBox (IDS_SUREWANTQUIT, ExitGame, 0, TH_ALIGN_CENTER))
-	{
-		g_VRStereo.InjectKeyTap (0x15, DFALSE);		// 0x15 = keyboard scan code for Y
-	}
+	ExitGame (DTRUE, 0);
 ```
 
-`InjectKeyTap` presses and releases the key through the same `SendInput`
-scan-code path the menu navigation uses, so the engine's `OnKeyDown` runs the
-yes branch of the box exactly as if the player had pressed Y.
+`ExitGame(DTRUE, ...)` is exactly what the box's yes branch would have run, so the
+behaviour is unchanged apart from dropping the prompt.

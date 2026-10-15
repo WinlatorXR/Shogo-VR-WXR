@@ -3517,13 +3517,6 @@ void CVRStereo::InjectCommandTap(int nCommand)
 	if (FindCommandKey(nCommand, nScan, bExt)) InjectScanTap(nScan, bExt);
 }
 
-// Press and release one key for the game (same path the menu/mapping taps use).
-// The shell uses this to answer the "quit?" confirmation for the player.
-void CVRStereo::InjectKeyTap(DDWORD nScan, DBOOL bExtended)
-{
-	InjectScanTap(nScan, bExtended);
-}
-
 void CVRStereo::ReleaseInjectedKey()
 {
 	if (!m_nInjScan) return;

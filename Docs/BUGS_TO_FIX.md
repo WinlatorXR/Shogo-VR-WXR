@@ -21,8 +21,8 @@ cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #1
 autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
 appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch lowers the eyes
 **and** the held gun), #22 (single left-stick dead zone, 15%), #37 (right-stick up/down weapon-swap
-dead zone), #38 (the Keyboard / Mouse / Joystick pages are hidden from Options) and #39 (selecting
-Quit confirms itself).
+dead zone), #38 (the Keyboard / Mouse / Joystick pages are hidden from Options) and #39 (Quit exits
+immediately, skipping the confirm box).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -64,7 +64,7 @@ Quit confirms itself).
 | 36 | Right B (transform) needs repeated taps | Fixed - verified (2026-10-14) |
 | 37 | Right-stick up/down swaps weapons too easily | Fixed in code (2026-10-14) - now tunable (see below); needs a device pass |
 | 38 | Keyboard / Mouse / Joystick pages in Options | Fixed in code (2026-10-15) - hidden from the menu; needs a device pass |
-| 39 | Quit needs a Y confirmation | Fixed in code (2026-10-15) - the mod submits Y; needs a device pass |
+| 39 | Quit confirmation dead-ends in VR | Fixed in code (2026-10-15) - Quit exits immediately (no box); needs a device pass |
 
 ## Open items (as of 2026-10-15)
 
@@ -83,8 +83,8 @@ device pass, and a few items were removed/cancelled.
   The press threshold is the live setting `VRWeaponSwapDead` (config + VR screen).
 - **#38 - the Keyboard, Mouse and Joystick pages are hidden** from the Options menu (the motion
   controllers own input). Options now shows Screen, Sound, vr and Back only.
-- **#39 - selecting Quit confirms itself**: the mod submits the Y key the confirmation box waits for,
-  so quitting is a single action in VR.
+- **#39 - selecting Quit exits immediately**: the "are you sure?" box is skipped entirely (its Y key
+  is a dead end in VR, where the controllers have no convenient Y).
 
 ---
 
@@ -1383,23 +1383,24 @@ device pass, and a few items were removed/cancelled.
 
 ---
 
-## 39. Selecting "Quit" should confirm itself (QoL)
+## 39. Selecting "Quit" should exit immediately (QoL)
 
 - **Status:** Fixed in code (2026-10-15) - needs a device pass.
 - **Priority:** Low (the quit flow dead-ends in VR)
-- **Requested (2026-10-15):** clicking the **Quit** (Exit) menu option should automatically submit
-  the **Y** key, so the user does not have to answer the "are you sure?" box by hand.
-- **Root cause:** `CMainMenu::Return()`'s Exit branch shows a yes/no box (`IDS_SUREWANTQUIT`) that
+- **Requested (2026-10-15):** clicking the **Quit** (Exit) menu option should quit right away in VR
+  (originally "automatically submit the Y key"; the owner then asked to **skip the box and quit
+  instantly**).
+- **Root cause:** `CMainMenu::Return()`'s Exit branch showed a yes/no box (`IDS_SUREWANTQUIT`) that
   waits for the configured "yes" key (the letter **Y**). In VR the motion controllers have no
   convenient Y, so the box can dead-end.
-- **Fix applied (2026-10-15):** a new `CVRStereo::InjectKeyTap(scan, ext)` presses and releases one
-  key through the existing `SendInput` scan-code path. `CMainMenu::Return()` now calls it with the
-  scan code for **Y** (`0x15`) right after the box is created, so the engine's `OnKeyDown` runs the
-  yes branch exactly as if the player had pressed Y. This is a ShogoSource edit, so it is documented
-  in `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md` (new). Build clean (714240 bytes),
-  deployed; needs a device pass.
-- **Refs:** `game/VRStereo.cpp` `InjectKeyTap`; `ShogoSource/ClientShellDLL/MainMenu.cpp` `Return`;
-  `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `OnKeyDown` / `DoYesNoMessageBox`; same class as
+- **Fix applied (2026-10-15):** the Exit branch now calls `ExitGame(DTRUE, 0)` **directly** - the same
+  yes-branch the box would have run - so the confirmation box is never created and Quit is a single
+  action. (A first cut kept the box and had the mod tap Y via a new `CVRStereo::InjectKeyTap`; that
+  helper was removed when the box was dropped.) This is a ShogoSource edit, so it is documented in
+  `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean (714240 bytes), deployed;
+  needs a device pass.
+- **Refs:** `ShogoSource/ClientShellDLL/MainMenu.cpp` `Return` / `ExitGame`;
+  `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `ExitGame` / `DoYesNoMessageBox`; same class as
   #16 (the game's own prompt does not accept the controller).
 
 ---

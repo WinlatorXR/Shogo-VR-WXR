@@ -158,7 +158,6 @@ class CVRStereo
 		DBOOL	GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight);	// left stick (DFALSE if centred)
 		int		PollWeaponCycle();			// right stick up/down: +1 next, -1 previous
 		int		PollMenuDirection();		// sticks as arrow keys, with key repeat
-		void	InjectKeyTap(DDWORD nScan, DBOOL bExtended);	// press+release a key for the game
 		void	AdjustWeaponPose(DVector &vPos, DRotation &rRot, DBOOL bFootScale);	// puts the gun in your hand
 		void	ScaleWeapon(HLOCALOBJ hWeapon, DBOOL bFootScale);
 
