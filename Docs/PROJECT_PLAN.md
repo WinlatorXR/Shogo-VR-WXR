@@ -355,8 +355,8 @@ verified. Supersampling (#7) is dropped, #18 folds into the #19 zoom removal, an
 autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
 **removed/cancelled** - players save/load manually. No bug is still **open**: #12
 (loading/bumper/credits screens mono), #20 (crouch now lowers the eyes), #22 (per-axis
-stick dead zone) and #26 (intro-video y-offset + 50 px) are all **fixed in code
-(14 Oct)**, awaiting a device pass.
+stick dead zone) and #26 (intro-video y-offset + 50 px; bottom-clip fallback fixed) are all
+**fixed in code (14 Oct)**, awaiting a device pass.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -386,7 +386,7 @@ that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#36)** - that fil
 not the phase statuses above, is the current source of truth. As of the 14 Oct
 2026 pass no bug is still **open**: #21 was confirmed verified by the user, and
 #12 (loading/bumper/credits per eye), #20 (crouch lowers the eyes), #22 (per-axis
-stick dead zone) and #26 (intro-video offset + 50 px) are **fixed in code**,
+stick dead zone) and #26 (intro-video offset + 50 px; bottom-clip fallback fixed) are **fixed in code**,
 awaiting a device pass. `#4` (fire) and `#9` (sync hold) were verified on the
 desktop with the XrApi UDP Tester.
 
@@ -535,9 +535,13 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   `RiotClientShell.cpp.md`, edit 2 in `RiotClientShell.h.md`, and a new `Credits.cpp.md`. Build clean;
   awaiting a device pass.
 - **#26 intro video lowered (fixed in code, 14 Oct)** - `ShiftMovieToRightHalf()` now blits the
-  per-eye movie clones (and the not-detected fallback) at `y = screenHeight / 8 + 50`, clamped so a
-  full-height frame still lands fully on-screen, instead of at `y = 0` (the `+ 50` is the owner's
-  14 Oct "about 50 px lower" follow-up). Build clean; awaiting a device pass.
+  per-eye movie clones at `y = screenHeight / 8 + 50`, clamped so a full-height frame still lands
+  fully on-screen, instead of at `y = 0` (the `+ 50` is the owner's 14 Oct "about 50 px lower"
+  follow-up). Follow-up: the deeper offset made the movie clip at the **bottom** - the
+  not-detected **fallback** blits the **whole window**, which can't be shifted down without losing
+  its bottom edge, so it now stays at `y = 0`. `DetectMovieSource()` was also made robust
+  (vertical extent first, then a superset of the old rows) so the offset still applies whenever the
+  frame is found. Build clean; awaiting a device pass.
 
 This brings the tracked ShogoSource notes to **ten** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp` and `Credits.cpp`).
@@ -566,7 +570,8 @@ The immediate next actions are:
 4. **Device-verify the last in-code fixes.** No tracked bug is still open: #12
    (loading / bumper / **credits** screen per eye - fix like #5), #20 (crouch now
    lowers the eyes), #22 (per-axis stick dead zone) and #26 (intro-video y-offset
-   + 50 px) are all **fixed in code (14 Oct)** and await a device pass.
+   + 50 px; bottom-clip fallback fixed) are all **fixed in code (14 Oct)** and await
+   a device pass.
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource

@@ -1313,9 +1313,12 @@ void CVRStereo::ShiftMovieToRightHalf()
 	}
 	else
 	{
-		// Couldn't find the movie: keep the plain right-half slide, lowered by
-		// the same amount (#26).
-		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, (int)nH / 8 + 50);
+		// Couldn't find the movie (e.g. a black lead-in frame): keep the plain
+		// right-half slide, but do NOT lower it.  This clone is the WHOLE
+		// window, so shifting it down just clips whatever sits near the bottom
+		// of the frame - that is what made the intro look cut off on the bottom
+		// (#26).  Only a successful detection (the branch above) earns the drop.
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, 0);
 	}
 
 	m_pClientDE->EndOptimized2D();
@@ -1336,46 +1339,57 @@ void CVRStereo::DetectMovieSource()
 
 	int nL = (int)nW / 4;
 	int nR = (int)nW - nL;
-	int nMinX = nR, nMaxX = nL, nMinY = (int)nH, nMaxY = 0;
 
 	HDECOLOR hBlack = m_pClientDE->SetupColor1(0.0f, 0.0f, 0.0f, DFALSE);
 	HDECOLOR c = 0;
-	DDWORD x, y;
-	int rows[3] = { (int)nH / 4, (int)nH / 2, (int)nH * 3 / 4 };
-	int cols[3] = { nL, (int)nW / 2, nR };
 
-	for (int r = 0; r < 3; r++)
+	// 1) Vertical extent first, down a few columns spread across the centre
+	//    band.  The old version only sampled a fixed trio of rows, so a short
+	//    video sitting between them was never seen: detection failed, the plain
+	//    clone fallback ran, and once that was lowered it looked cut off (#26).
+	int cols[5] = { nL, nL + (nR - nL) / 4, (int)nW / 2, nR - (nR - nL) / 4, nR };
+	int nMinY = (int)nH, nMaxY = -1;
+	for (int ci = 0; ci < 5; ci++)
 	{
-		for (x = (DDWORD)nL; x < (DDWORD)nR; x++)
+		for (int y = 0; y < (int)nH; y++)
 		{
-			if (m_pClientDE->GetPixel(m_hMovieSurface, x, (DDWORD)rows[r], &c) == DE_OK && c != hBlack)
+			if (m_pClientDE->GetPixel(m_hMovieSurface, (DDWORD)cols[ci], (DDWORD)y, &c) == DE_OK && c != hBlack)
 			{
-				if ((int)x < nMinX) nMinX = (int)x;
-				if ((int)x > nMaxX) nMaxX = (int)x;
+				if (y < nMinY) nMinY = y;
+				if (y > nMaxY) nMaxY = y;
 			}
 		}
 	}
-	for (int ci = 0; ci < 3; ci++)
+	if (nMaxY <= nMinY) return;
+
+	// 2) Horizontal extent along a spread of rows: the three the old code used,
+	//    plus three inside the video found above.  The union means we never lose
+	//    a wider box the old sampler produced, but we also catch a short video
+	//    whose rows sat between the old fixed samples.
+	int rows[6] = {
+		(int)nH / 4, (int)nH / 2, (int)nH * 3 / 4,
+		nMinY + (nMaxY - nMinY) / 4, (nMinY + nMaxY) / 2, nMaxY - (nMaxY - nMinY) / 4
+	};
+	int nMinX = nR, nMaxX = nL - 1;
+	for (int r = 0; r < 6; r++)
 	{
-		for (y = 0; y < nH; y++)
+		for (int x = nL; x < nR; x++)
 		{
-			if (m_pClientDE->GetPixel(m_hMovieSurface, (DDWORD)cols[ci], y, &c) == DE_OK && c != hBlack)
+			if (m_pClientDE->GetPixel(m_hMovieSurface, (DDWORD)x, (DDWORD)rows[r], &c) == DE_OK && c != hBlack)
 			{
-				if ((int)y < nMinY) nMinY = (int)y;
-				if ((int)y > nMaxY) nMaxY = (int)y;
+				if (x < nMinX) nMinX = x;
+				if (x > nMaxX) nMaxX = x;
 			}
 		}
 	}
+	if (nMaxX <= nMinX) return;
 
-	if (nMaxX > nMinX && nMaxY > nMinY)
-	{
-		m_rcMovieSrc.left	= nMinX;
-		m_rcMovieSrc.right	= nMaxX + 1;
-		m_rcMovieSrc.top	= nMinY;
-		m_rcMovieSrc.bottom	= nMaxY + 1;
-		m_bMovieSrcKnown	= DTRUE;
-		Log("movie source detected: %d,%d - %d,%d", m_rcMovieSrc.left, m_rcMovieSrc.top, m_rcMovieSrc.right, m_rcMovieSrc.bottom);
-	}
+	m_rcMovieSrc.left	= nMinX;
+	m_rcMovieSrc.right	= nMaxX + 1;
+	m_rcMovieSrc.top	= nMinY;
+	m_rcMovieSrc.bottom	= nMaxY + 1;
+	m_bMovieSrcKnown	= DTRUE;
+	Log("movie source detected: %d,%d - %d,%d", m_rcMovieSrc.left, m_rcMovieSrc.top, m_rcMovieSrc.right, m_rcMovieSrc.bottom);
 }
 
 void CVRStereo::ResetMovieSource()

@@ -21,7 +21,7 @@ cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #1
 autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
 appears fixed on device). **Fixed in code, awaiting a device pass:** #12 (loading/bumper/credits
 drawn per eye), #20 (crouch now lowers the eyes), #22 (per-axis left-stick dead zone) and #26 (intro
-video moved down 1/8 + 50 px).
+video moved down 1/8 + 50 px; the whole-window fallback that clipped its bottom is fixed).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -50,7 +50,7 @@ video moved down 1/8 + 50 px).
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
-| 26 | Intro video too high | Fixed in code (2026-10-14) - moved down 1/8 + 50 px; needs a device pass |
+| 26 | Intro video too high | Fixed in code (2026-10-14) - moved down 1/8 + 50 px; bottom-clip fallback fixed; needs a device pass |
 | 27 | Shots vs weapon model | Fixed - verified (2026-10-14) |
 | 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
 | 29 | Muzzle flash centred on the view | Fixed - verified (2026-10-14); dual pistols excluded |
@@ -75,7 +75,9 @@ device pass, and a few items were removed/cancelled.
 - **#20 - Crouch doesn't lower the VR camera**. The eyes now drop while the crouch controls are on
   (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
 - **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20).
-- **#26 - intro video moved down ~1/8 of the screen plus 50 px.**
+- **#26 - intro video moved down ~1/8 of the screen plus 50 px.** The whole-window fallback (used
+  when the movie frame isn't detected) no longer applies that offset, which was clipping the bottom;
+  detection was also made more robust so the offset still applies when the frame is found.
 
 ---
 
@@ -947,6 +949,18 @@ device pass, and a few items were removed/cancelled.
   `y = screenHeight / 8 + 50` (still clamped to `screenHeight - frameHeight`; when the film is taller
   than half the screen the clamp keeps it valid). Build clean (713728 bytes), deployed; needs a
   device pass.
+- **Follow-up 2 - "cut off on the bottom" (2026-10-14):** the deeper offset made the movie clip at
+  the **bottom**. Root cause: only the *detected* branch is clamped (`yOff + vh <= screenHeight`);
+  the **fallback** branch (used when `DetectMovieSource()` fails) blits the **whole window** at
+  `screenHeight / 8 + 50`, and shifting a whole-window clone down necessarily clips the bottom by
+  that many pixels - the `+50` made it 50 px worse. `DetectMovieSource()` failed because it only
+  sampled **three fixed rows** (`h/4, h/2, 3h/4`) horizontally, so a short video sitting between
+  them was never seen. Fix: (a) the fallback now draws at **y = 0** (a whole-window clone can't be
+  lowered without clipping); (b) `DetectMovieSource()` now finds the **vertical extent first** down
+  five columns, then scans six rows (the old three **plus** three inside the found video) so the
+  result is a strict superset of the old box on the same frame and can't regress. Build clean
+  (713728 bytes), deployed, PC smoke ok (`movie source detected` logged, no crash). Needs a device
+  pass.
 
 ---
 
