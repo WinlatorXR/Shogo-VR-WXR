@@ -158,6 +158,7 @@ class CVRStereo
 		DBOOL	GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight);	// left stick (DFALSE if centred)
 		int		PollWeaponCycle();			// right stick up/down: +1 next, -1 previous
 		int		PollMenuDirection();		// sticks as arrow keys, with key repeat
+		void	InjectKeyTap(DDWORD nScan, DBOOL bExtended);	// press+release a key for the game
 		void	AdjustWeaponPose(DVector &vPos, DRotation &rRot, DBOOL bFootScale);	// puts the gun in your hand
 		void	ScaleWeapon(HLOCALOBJ hWeapon, DBOOL bFootScale);
 
@@ -519,8 +520,7 @@ class CVRStereo
 		VarTrack	m_vtBodyArms;		// VRBodyArms       1 = show the body's arms too (they can't follow your hands)
 		VarTrack	m_vtBodyOffset;		// VRBodyOffset     metres the body sits behind your eyes
 		VarTrack	m_vtCrouchDrop;		// VRCrouchDrop     metres to lower the eyes while crouched (#20)
-		VarTrack	m_vtMoveDeadZoneX;	// VRMoveDeadZoneX  left stick left/right dead zone, 0..1 (#22)
-		VarTrack	m_vtMoveDeadZoneY;	// VRMoveDeadZoneY  left stick forward/back dead zone, 0..1 (#22)
+		VarTrack	m_vtMoveDeadZone;	// VRMoveDeadZone   left stick dead zone (both axes), 0..1 (#22)
 		VarTrack	m_vtWeaponSwapDead;	// VRWeaponSwapDead right stick up/down dead zone to change weapon, 0..1 (#37)
 		VarTrack	m_vtGunModel;		// VRGunModel       1 = third-person gun (no arms), 0 = first-person model with arms
 		VarTrack	m_vtHeldPitch;		// VRHeldPitch/Yaw/Roll  degrees, to correct the held gun's angle

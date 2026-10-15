@@ -303,8 +303,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtBodyArms.Init		(pClientDE, "VRBodyArms",		NULL, 0.0f);
 	m_vtBodyOffset.Init		(pClientDE, "VRBodyOffset",		NULL, 0.15f);
 	m_vtCrouchDrop.Init		(pClientDE, "VRCrouchDrop",		NULL, 0.6f);
-	m_vtMoveDeadZoneX.Init	(pClientDE, "VRMoveDeadZoneX",	NULL, 0.20f);
-	m_vtMoveDeadZoneY.Init	(pClientDE, "VRMoveDeadZoneY",	NULL, 0.08f);
+	m_vtMoveDeadZone.Init	(pClientDE, "VRMoveDeadZone",	NULL, 0.15f);
 	m_vtWeaponSwapDead.Init	(pClientDE, "VRWeaponSwapDead",	NULL, 0.80f);
 	m_vtGunModel.Init		(pClientDE, "VRGunModel",		NULL, 0.0f);
 	m_vtGunArms.Init		(pClientDE, "VRGunArms",		NULL, 1.0f);
@@ -2290,22 +2289,19 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	fForward = fRight = 0.0f;
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
 
-	// Per-axis (anisotropic) dead zone: a larger one left/right so a mostly
-	// forward push doesn't drift into a diagonal, and a smaller one
-	// forward/back (the most common input).  Each axis is rescaled from its
-	// own dead-zone edge back to 0..1 so movement still starts gently.
-	// Tunable in ShogoVR.ini / Options > vr settings (values are 0..1).
-	DFLOAT fDeadFwd  = m_vtMoveDeadZoneY.GetFloat(0.08f);	// forward / back
-	DFLOAT fDeadSide = m_vtMoveDeadZoneX.GetFloat(0.20f);	// strafe left/right
-	if (fDeadFwd  < 0.0f) fDeadFwd  = 0.0f;
-	if (fDeadFwd  > 0.95f) fDeadFwd  = 0.95f;		// keep (1 - dead) > 0
-	if (fDeadSide < 0.0f) fDeadSide = 0.0f;
-	if (fDeadSide > 0.95f) fDeadSide = 0.95f;
+	// One dead zone for the whole stick, applied to each axis: a mostly
+	// forward push can't drift sideways, while a deliberate diagonal still
+	// works.  Each axis is rescaled from the dead-zone edge back to 0..1 so
+	// movement still starts gently.  Tunable in ShogoVR.ini / Options > vr
+	// settings (value is 0..1: 0.15 = 15%).
+	DFLOAT fDead = m_vtMoveDeadZone.GetFloat(0.15f);
+	if (fDead < 0.0f) fDead = 0.0f;
+	if (fDead > 0.95f) fDead = 0.95f;			// keep (1 - dead) > 0
 
 	DFLOAT ax = (DFLOAT)fabs(m_fMoveX);
 	DFLOAT ay = (DFLOAT)fabs(m_fMoveY);
-	DFLOAT fx = (ax > fDeadSide) ? (ax - fDeadSide) / (1.0f - fDeadSide) : 0.0f;
-	DFLOAT fy = (ay > fDeadFwd)  ? (ay - fDeadFwd)  / (1.0f - fDeadFwd)  : 0.0f;
+	DFLOAT fx = (ax > fDead) ? (ax - fDead) / (1.0f - fDead) : 0.0f;
+	DFLOAT fy = (ay > fDead) ? (ay - fDead) / (1.0f - fDead) : 0.0f;
 	if (fx <= 0.0f && fy <= 0.0f) return DFALSE;
 	if (fx > 1.0f) fx = 1.0f;
 	if (fy > 1.0f) fy = 1.0f;
@@ -3519,6 +3515,13 @@ void CVRStereo::InjectCommandTap(int nCommand)
 	DDWORD nScan = 0;
 	DBOOL bExt = DFALSE;
 	if (FindCommandKey(nCommand, nScan, bExt)) InjectScanTap(nScan, bExt);
+}
+
+// Press and release one key for the game (same path the menu/mapping taps use).
+// The shell uses this to answer the "quit?" confirmation for the player.
+void CVRStereo::InjectKeyTap(DDWORD nScan, DBOOL bExtended)
+{
+	InjectScanTap(nScan, bExtended);
 }
 
 void CVRStereo::ReleaseInjectedKey()

@@ -20,8 +20,9 @@ were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. *
 cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #19), #24/#25/#33 (the
 autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
 appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch lowers the eyes
-**and** the held gun), #22 (per-axis left-stick dead zone; strafe 20%) and #37 (right-stick up/down
-weapon-swap dead zone).
+**and** the held gun), #22 (single left-stick dead zone, 15%), #37 (right-stick up/down weapon-swap
+dead zone), #38 (the Keyboard / Mouse / Joystick pages are hidden from Options) and #39 (selecting
+Quit confirms itself).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -46,7 +47,7 @@ weapon-swap dead zone).
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
 | 20 | Crouch doesn't lower the VR camera | Fixed in code (2026-10-14) - eyes + gun lower; needs a device pass |
 | 21 | Body shown in 3rd-person / cutscenes | Fixed - verified (2026-10-14, user-confirmed) |
-| 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis (strafe 20%); now tunable (see below); needs a device pass |
+| 22 | Left-stick deadzone | Fixed in code (2026-10-15) - single 15% dead zone (both axes); tunable (see below); needs a device pass |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
@@ -62,8 +63,10 @@ weapon-swap dead zone).
 | 35 | Left/right dominant hand does nothing | Fixed - verified (2026-10-14, user-confirmed) |
 | 36 | Right B (transform) needs repeated taps | Fixed - verified (2026-10-14) |
 | 37 | Right-stick up/down swaps weapons too easily | Fixed in code (2026-10-14) - now tunable (see below); needs a device pass |
+| 38 | Keyboard / Mouse / Joystick pages in Options | Fixed in code (2026-10-15) - hidden from the menu; needs a device pass |
+| 39 | Quit needs a Y confirmation | Fixed in code (2026-10-15) - the mod submits Y; needs a device pass |
 
-## Open items (as of 2026-10-14)
+## Open items (as of 2026-10-15)
 
 No tracked bug is still **open**: everything is either fixed/verified or fixed in code awaiting a
 device pass, and a few items were removed/cancelled.
@@ -72,11 +75,16 @@ device pass, and a few items were removed/cancelled.
 
 - **#20 - Crouch doesn't lower the VR camera**. The eyes **and the held gun** now drop while the
   crouch controls are on (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
-- **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20 = 20%). Both values are now
-  live settings - `VRMoveDeadZoneX` (left/right) and `VRMoveDeadZoneY` (forward/back) - in the config
-  (`ShogoVR.ini`) and on the VR screen (Options > vr settings), so they can be tuned in the headset.
+- **#22 - single left-stick dead zone** (15% on **both** axes). The value is the live setting
+  `VRMoveDeadZone` in the config (`ShogoVR.ini`) and on the VR screen (Options > vr settings), so it
+  can be tuned in the headset. The same threshold is applied to each axis, so a mostly-forward push
+  cannot drift sideways while a deliberate diagonal still works.
 - **#37 - right-stick up/down weapon swap** now needs a deliberate push (engage 0.80, re-arm 0.45).
   The press threshold is the live setting `VRWeaponSwapDead` (config + VR screen).
+- **#38 - the Keyboard, Mouse and Joystick pages are hidden** from the Options menu (the motion
+  controllers own input). Options now shows Screen, Sound, vr and Back only.
+- **#39 - selecting Quit confirms itself**: the mod submits the Y key the confirmation box waits for,
+  so quitting is a single action in VR.
 
 ---
 
@@ -865,6 +873,11 @@ device pass, and a few items were removed/cancelled.
   `VRMoveDeadZoneY` (forward/back, default 0.08) replace the hard-coded values; they are clamped to
   `0..0.95` so the rescale divisor stays positive. Added as the "dead zone left/right" and "dead zone
   fwd/back" rows on the VR screen (Options > vr settings). Build clean (715264 bytes), deployed.
+- **Simplified (2026-10-15):** the split was dropped - a **single** `VRMoveDeadZone` (default `0.15`
+  = 15%) now applies the same threshold to both axes. The per-axis `VRMoveDeadZoneX`/`VRMoveDeadZoneY`
+  settings and their two VR rows were removed (the VR page is back to 9 rows); the per-axis
+  application is kept, so a mostly-forward push still cannot drift sideways. Build clean (714240
+  bytes), deployed; needs a device pass.
 - **Refs:** `game/VRStereo.cpp:2260-2286` (`GetMoveAxes`), `:2230-2241` (`VRCommandOn` movement),
   #11, #37.
 
@@ -1353,6 +1366,44 @@ device pass, and a few items were removed/cancelled.
 
 ---
 
+## 38. The Keyboard / Mouse / Joystick pages should not be reachable (QoL)
+
+- **Status:** Fixed in code (2026-10-15) - needs a device pass.
+- **Priority:** Low (housekeeping; the controllers own input, so the binding pages are a distraction)
+- **Requested (2026-10-15):** hide the **Keyboard** and **Joystick** pages from the Options menu
+  ("they're not to be touched"), and also the **Mouse** page.
+- **Fix applied (2026-10-15):** in `COptionsMenu` the Keyboard, Mouse and Joystick rows were removed
+  from `LoadSurfaces()` and their `Return()` branches deleted. Options now lists **Screen, Sound, vr,
+  Back** (indices 0-3); the two item-count loops and the `UnloadSurfaces()` loop changed from seven to
+  four. The sub-menu objects and their `Init`/`ScreenDimsChanged` calls are left in place (no longer
+  reachable). This is a ShogoSource edit, so it is documented in
+  `ShogoSourceModifications/ClientShellDLL/OptionsMenu.cpp.md` (section 6). Build clean (714240
+  bytes), deployed; needs a device pass.
+- **Refs:** `ShogoSource/ClientShellDLL/OptionsMenu.cpp` `Return` / `LoadSurfaces` / `UnloadSurfaces`.
+
+---
+
+## 39. Selecting "Quit" should confirm itself (QoL)
+
+- **Status:** Fixed in code (2026-10-15) - needs a device pass.
+- **Priority:** Low (the quit flow dead-ends in VR)
+- **Requested (2026-10-15):** clicking the **Quit** (Exit) menu option should automatically submit
+  the **Y** key, so the user does not have to answer the "are you sure?" box by hand.
+- **Root cause:** `CMainMenu::Return()`'s Exit branch shows a yes/no box (`IDS_SUREWANTQUIT`) that
+  waits for the configured "yes" key (the letter **Y**). In VR the motion controllers have no
+  convenient Y, so the box can dead-end.
+- **Fix applied (2026-10-15):** a new `CVRStereo::InjectKeyTap(scan, ext)` presses and releases one
+  key through the existing `SendInput` scan-code path. `CMainMenu::Return()` now calls it with the
+  scan code for **Y** (`0x15`) right after the box is created, so the engine's `OnKeyDown` runs the
+  yes branch exactly as if the player had pressed Y. This is a ShogoSource edit, so it is documented
+  in `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md` (new). Build clean (714240 bytes),
+  deployed; needs a device pass.
+- **Refs:** `game/VRStereo.cpp` `InjectKeyTap`; `ShogoSource/ClientShellDLL/MainMenu.cpp` `Return`;
+  `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `OnKeyDown` / `DoYesNoMessageBox`; same class as
+  #16 (the game's own prompt does not accept the controller).
+
+---
+
 ## Cross-cutting notes
 
 - **Basis / handedness convention (#1, #2, #8):** both HMD and hands flow through
@@ -1360,7 +1411,7 @@ device pass, and a few items were removed/cancelled.
   roll (`VRHandFlip` inverted so `0` = corrected) are now confirmed on device. If the
   hand *aim* is ever found wrong, fix the hand frame in `GetHandWorld()` /
   `ToGameSpace()` against the (known-good) HMD basis rather than re-using the flag.
-- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32, #35, #36):** the controller->game path (#3)
+- **Input path (#3, #4, #15, #16, #17, #18, #20, #22, #23, #31, #32, #35, #36, #37, #38, #39):** the controller->game path (#3)
   and firing (#4) are verified on device. #15 (revised mapping), #16 (auto-quicksave at level start
   + quick-load on the left trigger when dead) and #17 (the face-button keystrokes A/B/X/Y no longer
   leak) are fixed in code and need on-device verification. #18 (Left-Y re-selects the equipped
@@ -1374,9 +1425,9 @@ device pass, and a few items were removed/cancelled.
   (`CVRStereo::ConsumeViewToggle` -> `CRiotClientShell::SetExternalCamera`) and the key-driven
   `ChaseView` is ignored while a controller is live in gameplay; Right B still injects `V` for the
   transform, but its leaked-face-key `ClearInput()` no longer cancels that injected key (#36,
-  2026-10-14). #32 (jump intermittently stops working, as if an input flag is stuck) is still open
-  (2026-10-13). #22 (left-stick deadzone) still isn't
-  applied on device (2026-10-13) and needs a per-axis split. Also reconcile each XrApi bool index
+  2026-10-14). #32 (jump intermittently stops working, as if an input flag is stuck) was removed as
+  apparently fixed on device. #22 (left-stick deadzone) is now a single 15% dead zone applied to both
+  axes (`VRMoveDeadZone`, 2026-10-15) and awaits a device pass. Also reconcile each XrApi bool index
   in `ButtonBits()` against the on-device bool string. See #9 for what should happen when the input
   feed itself stalls. **#35 (dominant hand) is now read by the game** (`Controls/LeftHanded`):
   left-handed swaps the two hand poses and the trigger/grip actions, leaving the sticks and buttons

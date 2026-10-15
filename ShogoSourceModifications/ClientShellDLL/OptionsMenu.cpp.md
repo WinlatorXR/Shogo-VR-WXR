@@ -98,3 +98,36 @@ item's dimensions (pristine line 143) — from `i < 6` to `i < 7`.
 
 Change its cleanup loop bound (pristine line 155) from `i < 6` to `i < 7` so the
 seventh item is released too.
+
+---
+
+## 6. Later change (2026-10-15): hide the Keyboard, Mouse and Joystick pages
+
+**Part of:** `COptionsMenu::Return()`, `COptionsMenu::LoadSurfaces()` and
+`COptionsMenu::UnloadSurfaces()`.
+
+The motion controllers own all input, so the Keyboard, Mouse and Joystick binding
+pages are hidden from the player. They are removed as *menu rows* only; the
+sub-menu objects and their `Init`/`ScreenDimsChanged` calls are left in place.
+
+Starting from the seven-item state above (0 screen, 1 sound, 2 keyboard,
+3 mouse, 4 joystick, 5 vr, 6 back), the result is four items:
+
+| Index | Item |
+|-------|------|
+| 0 | screen |
+| 1 | sound |
+| 2 | vr |
+| 3 | back |
+
+In `LoadSurfaces()` the `IDS_KEYBOARD` (index 2), `IDS_MOUSE` (index 3) and
+`IDS_JOYSTICK` (index 4) items are dropped and the remaining items are written to
+indices 0–3 (vr 5→2, back 6→3), for both the normal and selected variants. The
+two item-count loops in this function change from `i < 7` to `i < 4`.
+
+In `Return()` the `m_nSelection` branches are renumbered to match: the vr branch
+becomes `== 2` and the "back to parent" branch becomes `== 3`. The keyboard
+branch, the mouse branch and the joystick branch (with its `JoystickEnabled()` /
+`JoystickMenuDisabled()` message-box fallbacks) are deleted.
+
+In `UnloadSurfaces()` the cleanup loop bound changes from `i < 7` to `i < 4`.

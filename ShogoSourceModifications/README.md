@@ -25,6 +25,8 @@ ShogoSourceModifications/
   README.md                     <- this file
   ClientShellDLL/
     BaseMenu.h.md
+    Credits.cpp.md
+    MainMenu.cpp.md
     OptionsMenu.h.md
     OptionsMenu.cpp.md
     PlayerStats.cpp.md
@@ -41,7 +43,9 @@ ShogoSourceModifications/
 |------|---------|
 | `ClientShellDLL/BaseMenu.h`      | Raises the generic menu-items capacity to 28 so `CVRMenu`'s 28 rows fit `m_GenericItem` (an overflow here corrupted surfaces and crashed on level start). |
 | `ClientShellDLL/OptionsMenu.h`   | Adds the `CVRMenu` sub-menu member and its lifecycle calls. |
-| `ClientShellDLL/OptionsMenu.cpp` | Adds the "vr" item to the Options menu and routes to the VR sub-menu. |
+| `ClientShellDLL/OptionsMenu.cpp` | Adds the "vr" item to the Options menu and routes to the VR sub-menu, and hides the Keyboard / Mouse / Joystick binding pages (the controllers own input). |
+| `ClientShellDLL/MainMenu.cpp`    | Submits the "yes" key for the player when the Exit / Quit item's confirmation box appears, so quitting is a single action in VR. |
+| `ClientShellDLL/Credits.cpp`     | Lays the credits / intro text out on the mod's small virtual screen so it can be drawn per eye in VR. |
 | `ClientShellDLL/PlayerStats.cpp` | Brackets the two crosshair draw sites with `g_VRStereo.BeginCrosshair()`/`EndCrosshair()` so the mod can hide the game crosshair by default and otherwise place it at aim depth. |
 | `ClientShellDLL/RiotClientShell.cpp` | Mounts `CVRStereo`/`g_VRStereo`: init/term/update, console `VRRecenter`, head tracking, aim depth, mech mode, player body + crouch state, the stereo-aware `RenderCamera`, the per-eye menu/pause render, the right-half splash, the per-eye intro-movie clone, the dead-state feed, the VR menu-size re-layout poll, the per-eye hurt/explosion flash (which replaces the engine camera light-add), the leaked face-button key drop (`OnKeyDown`/`OnKeyUp`), the direct Right-A view toggle (`Update`) and the guard that ignores the leaked key-driven `ChaseView` (`OnCommandOn`). |
 | `ClientShellDLL/RiotMenu.cpp`    | Asks `g_VRStereo` for the virtual menu layout size in `ScreenDimsChanged()` so the options/pause tree lays out legibly in the headset. |
@@ -75,7 +79,7 @@ the DLL you also need the rest of this repository:
 Steps:
 
 1. Put your own Shogo v2.2 source in `ShogoSource/` (the folder the project
-   expects) and apply the nine notes above.
+   expects) and apply the notes above.
 2. Build `build/CShell.vcxproj` with Visual Studio 2022 (Platform Toolset v143),
    `Win32`. The output is `build\out\CShell.dll`.
 3. Deploy the DLL into a `ShogoVR\` overlay folder and launch Shogo with the

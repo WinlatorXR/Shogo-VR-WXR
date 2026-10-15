@@ -342,7 +342,7 @@ STATUS (device run, 10-14 Oct 2026): the port **has run on the target** - Meta
 Quest 3 via WinlatorXR, launched from the custom `ShogoVR.exe` (launcher-xr), with
 the game at **2800x1400 SBS** (1400/eye). The on-device sessions exposed a set of
 comfort / render / input issues; those are logged, root-caused and almost all fixed
-in `Docs/BUGS_TO_FIX.md` (#1-#36). As of the 14 Oct 2026 headset pass the list is
+in `Docs/BUGS_TO_FIX.md` (#1-#39). As of the 14 Oct 2026 headset pass the list is
 nearly closed - the original 10-11 Oct batch (head roll #1, hand roll #2/#8, the
 controller input path #3, fire #4, menu sizing/centring #5/#6, the stale-data hang
 #9, the stereo splash/movies #10, left-stick movement #11, render resolution #13,
@@ -354,10 +354,12 @@ menu (#30), the lower-than-origin weapon model (#34) and dominant hand (#35) are
 verified. Supersampling (#7) is dropped, #18 folds into the #19 zoom removal, and the
 autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
 **removed/cancelled** - players save/load manually. No bug is still **open**: #20
-(crouch lowers the eyes and the held gun), #22 (per-axis stick dead zone, strafe 20%) and
-#37 (right-stick weapon-swap dead zone) are **fixed in code (14 Oct)**, now tunable on the VR
-screen / in the config, awaiting a device pass; #12 (loading/bumper/credits) and #26
-(intro-video y-offset + 50 px) are **fixed and verified on device (14 Oct)**.
+(crouch lowers the eyes and the held gun), #22 (single left-stick dead zone, 15%),
+#37 (right-stick weapon-swap dead zone), #38 (the Keyboard / Mouse / Joystick pages are
+hidden) and #39 (selecting Quit confirms itself) are **fixed in code (14-15 Oct)**, now
+tunable / present on the VR screen and in the config, awaiting a device pass; #12
+(loading/bumper/credits) and #26 (intro-video y-offset + 50 px) are **fixed and verified
+on device (14 Oct)**.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -383,12 +385,13 @@ issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
 Progress: **Phases 0-5 are code-complete and the port has run on the target**
 (Meta Quest 3 via WinlatorXR, launched from `ShogoVR.exe`, 2800x1400 SBS). The
 10-13 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
-that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#37)** - that file,
-not the phase statuses above, is the current source of truth. As of the 14 Oct
+that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#39)** - that file,
+not the phase statuses above, is the current source of truth. As of the 15 Oct
 2026 pass no bug is still **open**: #21 was confirmed verified by the user, and
-#20 (crouch lowers the eyes **and the held gun**), #22 (per-axis stick dead zone, strafe
-20%) and #37 (right-stick weapon-swap dead zone) are **fixed in code** - the three dead
-zones are now live settings (`VRMoveDeadZoneX`/`Y`, `VRWeaponSwapDead`) on the VR screen
+#20 (crouch lowers the eyes **and the held gun**), #22 (single left-stick dead zone, 15%),
+#37 (right-stick weapon-swap dead zone), #38 (the Keyboard / Mouse / Joystick pages are
+hidden from Options) and #39 (selecting Quit confirms itself) are **fixed in code** - the
+dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`) on the VR screen
 and in `ShogoVR.ini`, awaiting a device pass, while #12 (loading/bumper/credits per eye) and #26 (intro-video
 offset + 50 px) are **fixed and verified on device**. `#4` (fire) and `#9` (sync hold)
 were verified on the desktop with the XrApi UDP Tester.
@@ -515,7 +518,9 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   look, `VRTwoHand` -> off and `VRGunScaleMCA` -> 1.5x in the `CVRStereo` VarTrack
   `Init` calls. Build clean; **verified on device (2026-10-14)**. **Follow-up (14 Oct):** the
   left/right, forward/back and weapon-swap dead zones were added back as three rows
-  (`VRMoveDeadZoneX`/`Y`, `VRWeaponSwapDead`) at the owner's request, so the page is now 10 rows.
+  (`VRMoveDeadZoneX`/`Y`, `VRWeaponSwapDead`) at the owner's request. **Follow-up (15 Oct):** the
+  split left/right and forward/back rows collapsed into a single "move dead zone" (`VRMoveDeadZone`,
+  15%), so the page is now 9 rows.
 - **#35 dominant hand now works** - `Controls/LeftHanded` was read only by the PCVR bridge, so on
   the WinlatorXR path the toggle was inert. `CVRStereo` now reads it itself
   (`LoadSettingsFile`, logged as `VR: dominant hand left/right`) and, when left-handed, swaps the two
@@ -534,7 +539,10 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   combined magnitude at 1, so a mostly-forward push no longer drifts into a diagonal. Build clean;
   awaiting a device pass. **Follow-up (14 Oct):** both thresholds are now live settings
   (`VRMoveDeadZoneX` = 0.20, `VRMoveDeadZoneY` = 0.08, clamped to `0..0.95`), tunable in
-  `ShogoVR.ini` and on the VR screen.
+  `ShogoVR.ini` and on the VR screen. **Follow-up (15 Oct):** the split was dropped in favour of a
+  **single** `VRMoveDeadZone` (default 0.15 = 15%, clamped to `0..0.95`) applied to both axes; the two
+  per-axis settings and their VR rows were removed. The per-axis application is kept, so a
+  mostly-forward push still cannot drift sideways.
 - **#37 right-stick up/down weapon-swap dead zone (fixed in code, 14 Oct)** - `PollWeaponCycle()`
   cycled weapons as soon as `|turnY| > 0.7`, so a light up/down nudge could change weapons. It now
   requires a deliberate push (`fSwapPress = 0.80`) and re-arms only below `fSwapReset = 0.45`
@@ -560,9 +568,18 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   its bottom edge, so it now stays at `y = 0`. `DetectMovieSource()` was also made robust
   (vertical extent first, then a superset of the old rows) so the offset still applies whenever the
   frame is found. Confirmed by the owner: "the video is perfect now".
+- **#38 Options menu trimmed (fixed in code, 15 Oct)** - the Keyboard, Mouse and Joystick binding
+  pages are hidden from the Options menu (the controllers own input): `COptionsMenu` now lists only
+  Screen, Sound, vr and Back. The rows were removed from `LoadSurfaces()`, the matching `Return()`
+  branches deleted, and the item-count loops reduced from seven to four. Documented as section 6 in
+  `ShogoSourceModifications/ClientShellDLL/OptionsMenu.cpp.md`. Build clean; awaiting a device pass.
+- **#39 Quit confirms itself (fixed in code, 15 Oct)** - the Exit item's "are you sure?" box waits for
+  the Y key, which the controllers cannot easily send, so `CMainMenu::Return()` now asks the mod to
+  tap Y (`CVRStereo::InjectKeyTap`, scan code `0x15`) as soon as the box appears. Documented in the new
+  `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean; awaiting a device pass.
 
-This brings the tracked ShogoSource notes to **ten** files
-(`ShogoSourceModifications/` now also documents `RiotMenu.cpp` and `Credits.cpp`).
+This brings the tracked ShogoSource notes to **eleven** files
+(`ShogoSourceModifications/` now also documents `RiotMenu.cpp`, `Credits.cpp` and `MainMenu.cpp`).
 
 The immediate next actions are:
 
@@ -573,8 +590,9 @@ The immediate next actions are:
    menu (#30), the lower-than-origin weapon model (#34), dominant hand (#35) and the
    Right-A/B view + transform toggles (#23/#31/#36, B confirmed 14 Oct).
 2. **Clean-up pass - verified.** Zoom is removed (#19, which also drops the #18
-   Left-Y re-select), the in-game VR menu is trimmed to the short list (7 rows; the three
-   dead-zone rows were added back on 14 Oct), the removed options are pinned to their defaults (#30), and the hurt / explosion flash is
+   Left-Y re-select), the in-game VR menu is trimmed to a short list (9 rows, including the
+   move and weapon-swap dead zones; the move dead zones collapsed to one on 15 Oct), the
+   removed options are pinned to their defaults (#30), and the hurt / explosion flash is
    re-drawn on the post-render path (#28). #7 (supersampling) is dropped and not
    pursued.
 3. **Removals (14 Oct).** The autosave family - on-foot autosave (#24), autosave
@@ -586,12 +604,13 @@ The immediate next actions are:
    is now skipped for `B` (the leaked `B` is already ignored by the #31 guard) and a
    single B press transforms both ways.
 4. **Device-verify the last in-code fixes.** No tracked bug is still open: #20
-   (crouch lowers the eyes **and the held gun**), #22 (per-axis stick dead zone, strafe
-   20%) and #37 (right-stick weapon-swap dead zone) are **fixed in code (14 Oct)** and
-   await a device pass; the two stick dead zones and the weapon-swap dead zone are now live
-   settings (`VRMoveDeadZoneX`/`Y`, `VRWeaponSwapDead`) on the VR screen and in `ShogoVR.ini`,
-   so they can be tuned in the headset. #12 (loading / bumper / **credits** screen per eye) and
-   #26 (intro-video y-offset + 50 px) are **fixed and verified on device (14 Oct)**.
+   (crouch lowers the eyes **and the held gun**), #22 (single left-stick dead zone, 15%),
+   #37 (right-stick weapon-swap dead zone), #38 (Keyboard / Mouse / Joystick pages hidden)
+   and #39 (Quit confirms itself) are **fixed in code (14-15 Oct)** and await a device pass;
+   the move and weapon-swap dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`)
+   on the VR screen and in `ShogoVR.ini`, so they can be tuned in the headset. #12 (loading /
+   bumper / **credits** screen per eye) and #26 (intro-video y-offset + 50 px) are **fixed and
+   verified on device (14 Oct)**.
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource
