@@ -1291,13 +1291,20 @@ void CVRStereo::ShiftMovieToRightHalf()
 	{
 		int xL = (int)nW / 4 - vw / 2;			// middle of the left half
 		int xR = (int)nW - (int)nW / 4 - vw / 2;	// middle of the right half
-		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xL, 0);
-		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xR, 0);
+		// Sit the movie a little lower than screen centre: the user wanted the
+		// intro ~1/8 of the screen height down from the top.  Clamp so a
+		// full-height frame still lands fully on-screen.
+		int yOff = (int)nH / 8;
+		if (vh + yOff > (int)nH) yOff = (int)nH - vh;
+		if (yOff < 0) yOff = 0;
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xL, yOff);
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, &m_rcMovieSrc, xR, yOff);
 	}
 	else
 	{
-		// Couldn't find the movie: keep the plain right-half slide.
-		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, 0);
+		// Couldn't find the movie: keep the plain right-half slide, lowered by
+		// the same amount (#26).
+		m_pfnDrawSurfaceToSurface(hScreen, m_hMovieSurface, DNULL, (int)nW / 4, (int)nH / 8);
 	}
 
 	m_pClientDE->EndOptimized2D();
@@ -2255,14 +2262,28 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	fForward = fRight = 0.0f;
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
 
-	// Round dead zone, then rescale so movement starts gently at its edge.
-	const DFLOAT fDead = 0.15f;
-	DFLOAT fLen = (DFLOAT)sqrt(m_fMoveX * m_fMoveX + m_fMoveY * m_fMoveY);
-	if (fLen <= fDead) return DFALSE;
+	// Per-axis (anisotropic) dead zone: a larger one left/right so a mostly
+	// forward push doesn't drift into a diagonal, and a smaller one
+	// forward/back (the most common input).  Each axis is rescaled from its
+	// own dead-zone edge back to 0..1 so movement still starts gently.
+	const DFLOAT fDeadFwd  = 0.08f;		// forward / back   (5-10%)
+	const DFLOAT fDeadSide = 0.20f;		// strafe left/right (>=15%)
 
-	DFLOAT fScale = ((fLen > 1.0f ? 1.0f : fLen) - fDead) / (1.0f - fDead) / fLen;
-	fForward	= m_fMoveY * fScale;
-	fRight		= m_fMoveX * fScale;
+	DFLOAT ax = (DFLOAT)fabs(m_fMoveX);
+	DFLOAT ay = (DFLOAT)fabs(m_fMoveY);
+	DFLOAT fx = (ax > fDeadSide) ? (ax - fDeadSide) / (1.0f - fDeadSide) : 0.0f;
+	DFLOAT fy = (ay > fDeadFwd)  ? (ay - fDeadFwd)  / (1.0f - fDeadFwd)  : 0.0f;
+	if (fx <= 0.0f && fy <= 0.0f) return DFALSE;
+	if (fx > 1.0f) fx = 1.0f;
+	if (fy > 1.0f) fy = 1.0f;
+
+	fRight		= (m_fMoveX < 0.0f) ? -fx : fx;
+	fForward	= (m_fMoveY < 0.0f) ? -fy : fy;
+
+	// Cap the combined magnitude at 1 so a diagonal is no faster than a
+	// straight push (the analog values cap the flat-screen speed).
+	DFLOAT fMag = (DFLOAT)sqrt(fRight * fRight + fForward * fForward);
+	if (fMag > 1.0f) { fRight /= fMag; fForward /= fMag; }
 
 	// The game walks you relative to where you aim.  To walk where you look
 	// (or where the other hand points) instead, turn the stick by the angle

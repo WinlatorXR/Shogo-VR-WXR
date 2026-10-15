@@ -348,15 +348,15 @@ controller input path #3, fire #4, menu sizing/centring #5/#6, the stale-data ha
 #9, the stereo splash/movies #10, left-stick movement #11, render resolution #13,
 crosshair default #14, the control layout #15, respawn-on-death #16, the face-button
 leak #17) plus the later zoom removal (#19), the Right-A/B view + transform toggles
-(#23/#31/#36), shots-vs-model (#27), the hurt / explosion flash (#28), the muzzle
-flash at the visible gun (#29), the trimmed VR menu (#30), the lower-than-origin
-weapon model (#34) and dominant hand (#35) are all verified. Supersampling (#7) is
-dropped, #18 folds into the #19 zoom removal, and the autosave family (#24/#25/#33)
-plus the intermittent jump flag (#32) are **removed/cancelled** - players save/load
-manually. The **only open items left** are #12 (loading/bumper/credits screens mono),
-#20 (crouch camera), #22 (stick deadzone) and #26 (intro-video y-offset); #21 (the VR
-body showing in third-person / cutscene / death views) is **fixed in code (14 Oct)**,
-awaiting a device pass.
+(#23/#31/#36), the VR body hidden outside first-person (#21), shots-vs-model (#27), the
+hurt / explosion flash (#28), the muzzle flash at the visible gun (#29), the trimmed VR
+menu (#30), the lower-than-origin weapon model (#34) and dominant hand (#35) are all
+verified. Supersampling (#7) is dropped, #18 folds into the #19 zoom removal, and the
+autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
+**removed/cancelled** - players save/load manually. The **only open items left** are #12
+(loading/bumper/credits screens mono) and #20 (crouch camera); #22 (per-axis stick dead
+zone) and #26 (intro-video y-offset) are **fixed in code (14 Oct)**, awaiting a device
+pass.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -384,9 +384,9 @@ Progress: **Phases 0-5 are code-complete and the port has run on the target**
 10-13 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
 that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#36)** - that file,
 not the phase statuses above, is the current source of truth. As of the 14 Oct
-2026 pass all but five are closed; the remaining open bugs are #12, #20, #21, #22
-and #26. `#4` (fire) and `#9` (sync hold) were verified on the desktop with the
-XrApi UDP Tester.
+2026 pass all but two are closed; the remaining open bugs are #12 and #20 (#21 is
+verified, and #22/#26 are fixed in code awaiting a device pass). `#4` (fire) and
+`#9` (sync hold) were verified on the desktop with the XrApi UDP Tester.
 
 The 11 Oct 2026 session added six more in-code fixes (all since verified on device):
 
@@ -508,13 +508,20 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   hand poses (so the gun models follow the other controller) and swaps **only** the trigger/grip
   actions - left trigger fires, left grip double-jumps - leaving the sticks and face buttons alone.
   Build clean; **verified on device (2026-10-14, user-confirmed)**.
-- **#21 VR body hidden outside first-person (fixed in code, 14 Oct)** - `UpdateServerPlayerModel()`
+- **#21 VR body hidden outside first-person (14 Oct)** - `UpdateServerPlayerModel()`
   now passes `bShow = m_playerCamera.IsFirstPerson() && !m_bUsingExternalCamera && !IsPlayerDead() &&
   !IsSpectatorMode()` to `g_VRStereo.UpdateBody(...)`, so the mod's copy of the player body is drawn
   only in normal first-person gameplay. In third-person (chase), cutscene (external camera) and
   death / spectator views the game's own model is the one shown, so the "two mechs / two players"
-  overlap is gone. Build clean; awaiting a device pass. (The mod body's missing geometry is still
-  open.)
+  overlap is gone. Build clean; **verified on device (2026-10-14, user-confirmed)**.
+- **#22 per-axis left-stick dead zone (fixed in code, 14 Oct)** - `GetMoveAxes()` used one radial
+  `0.15` for both axes; it now uses a forward/back dead zone of `0.08` and a strafe dead zone of
+  `0.20`, rescales each axis from its own edge, then caps the combined magnitude at 1, so a
+  mostly-forward push no longer drifts into a diagonal. Build clean; awaiting a device pass.
+- **#26 intro video lowered (fixed in code, 14 Oct)** - `ShiftMovieToRightHalf()` now blits the
+  per-eye movie clones (and the not-detected fallback) at `y = screenHeight / 8`, clamped so a
+  full-height frame still lands fully on-screen, instead of at `y = 0`. Build clean; awaiting a
+  device pass.
 
 This brings the tracked ShogoSource notes to **nine** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`).
@@ -523,10 +530,10 @@ The immediate next actions are:
 
 1. **Device verification is up to date.** The fixed set is now verified on device
    (13-14 Oct): the 10-11 Oct batch (#1-#6, #8-#11, #13-#17), the zoom removal
-   (#19), shots-vs-model (#27), the hurt / explosion flash (#28), the muzzle flash
-   at the visible gun (#29), the trimmed VR menu (#30), the lower-than-origin weapon
-   model (#34), dominant hand (#35) and the Right-A/B view + transform toggles
-   (#23/#31/#36, B confirmed 14 Oct).
+   (#19), the VR body hidden outside first-person (#21), shots-vs-model (#27), the hurt
+   / explosion flash (#28), the muzzle flash at the visible gun (#29), the trimmed VR
+   menu (#30), the lower-than-origin weapon model (#34), dominant hand (#35) and the
+   Right-A/B view + transform toggles (#23/#31/#36, B confirmed 14 Oct).
 2. **Clean-up pass - verified.** Zoom is removed (#19, which also drops the #18
    Left-Y re-select), the in-game VR menu is trimmed to the 7-row short list with the
    removed options pinned to their defaults (#30), and the hurt / explosion flash is
@@ -542,8 +549,9 @@ The immediate next actions are:
    single B press transforms both ways.
 4. **Work the remaining open items one at a time**, logging each in
    `Docs/BUGS_TO_FIX.md`: the loading / bumper / **credits** screen stereo layout
-   (#12 - fix like #5), the crouch camera eye-height (#20), the per-axis left-stick
-   deadzone (#22) and the intro-video y-offset (#26).
+   (#12 - fix like #5) and the crouch camera eye-height (#20). #22 (per-axis stick dead
+   zone) and #26 (intro-video y-offset) are **fixed in code (14 Oct)** and await a
+   device pass.
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource

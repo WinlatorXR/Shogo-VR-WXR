@@ -14,13 +14,13 @@ Verified on device: **#1, #2, #3, #4, #5, #6, #8, #9, #10, #11, #13, #14, #15, #
 the camera half is still open), **#23/#31** (Right-A view toggle), **#27** (shots track the visible
 gun), **#28** (the peripheral hurt/explosion flash - 2026-10-13), **#29** (muzzle flash at the
 visible gun's muzzle; the on-foot dual pistols keep the game's own alternating flashes), **#30** (VR
-menu trimmed to 7 rows), **#34** (the gun no longer sits below the shot origin), **#35** (dominant
+menu trimmed to 7 rows), **#21** (the VR body no longer shows in third-person / cutscene / death
+views - user-confirmed), **#34** (the gun no longer sits below the shot origin), **#35** (dominant
 hand - user-confirmed) and **#36** (Right B transform). #4 and #9 were verified with the WinlatorXR
 XrApi UDP Tester rather than in the headset. **Removed / cancelled:** #7 (supersampling not pursued),
 #18 (zoom re-select, folded into #19), #24/#25/#33 (the autosave family - players can save/load
 manually if they hit an issue instead) and #32 (jump - appears fixed on device). **Fixed in code,
-awaiting a device pass:** #21 (the VR body is now hidden in third-person / cutscene / death views;
-its *missing geometry* sub-item is still open).
+awaiting a device pass:** #22 (per-axis left-stick dead zone) and #26 (intro video moved down 1/8).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -44,12 +44,12 @@ its *missing geometry* sub-item is still open).
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
 | 20 | Crouch doesn't lower the VR camera | In progress (body crouch works; camera not lowered) |
-| 21 | Body shown in 3rd-person / cutscenes | Fixed in code (2026-10-14) - needs a device pass (missing geometry still open) |
-| 22 | Left-stick deadzone | Open (still not applied on device) |
+| 21 | Body shown in 3rd-person / cutscenes | Fixed - verified (2026-10-14, user-confirmed) |
+| 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis; needs a device pass |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
-| 26 | Intro video too high | Open |
+| 26 | Intro video too high | Fixed in code (2026-10-14) - moved down 1/8; needs a device pass |
 | 27 | Shots vs weapon model | Fixed - verified (2026-10-14) |
 | 28 | Hurt/explosion flash not visible | Fixed - verified (2026-10-13) |
 | 29 | Muzzle flash centred on the view | Fixed - verified (2026-10-14); dual pistols excluded |
@@ -69,11 +69,9 @@ Everything else in the table below is fixed/verified or removed. The **only open
   eyes; fix to mirror #5).
 - **#20 - Crouch doesn't lower the VR camera** (the body crouch animation works; the eye height
   never moves).
-- **#22 - Left-stick deadzone** still not applied, and not split between strafe and forward/back.
-- **#26 - Intro video sits slightly too high** (move it down ~1/8).
 
-**Fixed in code, awaiting a device pass:** #21 - the VR body is now hidden in third-person / cutscene
-/ death views (the game's own model is shown there); its **missing-geometry** sub-item is still open.
+**Fixed in code, awaiting a device pass:** #22 (per-axis left-stick dead zone - forward/back 0.08,
+strafe 0.20) and #26 (intro video moved down ~1/8 of the screen).
 
 ---
 
@@ -778,8 +776,8 @@ Everything else in the table below is fixed/verified or removed. The **only open
 
 ## 21. The VR body shows in third-person / cutscene views (and is missing geometry)
 
-- **Status:** **Fixed in code (2026-10-14)** - needs a device pass to confirm. The *missing geometry*
-  half is still open.
+- **Status:** **Fixed - verified on device (2026-10-14, user-confirmed)** - the VR body no longer
+  shows in third-person / cutscene / death views ("completely done").
 - **Priority:** Medium (visual; third-person cutscenes read as "two mechs / two players")
 - **Observed:**
   - (device, 2026-10-12) during cutscenes two MCA mechs / player bodies appear in third person.
@@ -797,9 +795,7 @@ Everything else in the table below is fixed/verified or removed. The **only open
   The mod body is therefore hidden for the **third-person (chase)**, **external / cutscene** and
   **death / spectator** views, where the game's own model is the one shown; it is still drawn in
   normal first-person gameplay (where the game hides its model). Build clean (712704 bytes),
-  deployed; needs a device pass.
-- **Still open:** the mod's first-person body is missing some geometry ("the extra bits") - not
-  addressed by this fix; revisit if the user wants it.
+  deployed; **verified on device (2026-10-14, user-confirmed)**.
 - **Refs:** `ShogoSource/ClientShellDLL/RiotClientShell.cpp` (`m_bUsingExternalCamera`,
   `IsPlayerDead`, `IsSpectatorMode`, `UpdateServerPlayerModel`);
   `game/VRStereo.cpp:3564,3580` (`HideBody` / `UpdateBody`).
@@ -808,7 +804,7 @@ Everything else in the table below is fixed/verified or removed. The **only open
 
 ## 22. Left-stick deadzone too small / not split between strafe and forward-back
 
-- **Status:** Open
+- **Status:** **Fixed in code (2026-10-14)** - needs a device pass to confirm.
 - **Priority:** Medium (unintended diagonal movement)
 - **Observed (device, 2026-10-12):** the left stick drifts into diagonals too easily; want **at
   least 15% deadzone on left/right** so diagonal only happens on purpose, and **5-10% on
@@ -818,9 +814,14 @@ Everything else in the table below is fixed/verified or removed. The **only open
 - **Root cause:** `GetMoveAxes()` applies a single **radial** dead zone of `0.15` to both axes
   (`game/VRStereo.cpp:2096-2100`), so strafe and forward share one threshold; a small sideways
   component survives whenever the stick is mostly forward.
-- **Fix direction:** make the dead zone **per-axis** (anisotropic): forward/back 5-10%, left/right
-  >=15%, then re-normalise so the analog speed cap still behaves. Keep the rotate-to-aim transform.
-- **Refs:** `game/VRStereo.cpp:2096-2100` (`GetMoveAxes`), `:2003-2034` (`VRCommandOn` movement),
+- **Fix applied (2026-10-14) - per-axis (anisotropic) dead zone:** `GetMoveAxes()` no longer uses the
+  single radial `0.15`.  Each axis now has its own threshold and is rescaled from its edge back to
+  `0..1`: forward/back **0.08** (5-10%) and strafe left/right **0.20** (>=15%).  The combined vector
+  is then capped at magnitude 1 so a diagonal is no longer faster than a straight push, and the
+  rotate-to-aim transform is unchanged.  Net effect: a mostly-forward push no longer drifts
+  sideways, while deliberate diagonals still work. Build clean (712704 bytes), deployed; needs a
+  device pass.
+- **Refs:** `game/VRStereo.cpp:2260-2286` (`GetMoveAxes`), `:2230-2241` (`VRCommandOn` movement),
   #11.
 
 ---
@@ -908,15 +909,16 @@ Everything else in the table below is fixed/verified or removed. The **only open
 
 ## 26. Intro video sits slightly too high; move it down ~1/8
 
-- **Status:** Open
+- **Status:** **Fixed in code (2026-10-14)** - needs a device pass to confirm.
 - **Priority:** Low (comfort / polish)
 - **Observed (device, 2026-10-12):** the intro movie is a little too high on screen; the user
   wants it about **1/8 of the screen height lower** from the top.
 - **Root cause / refs:** `CVRStereo::ShiftMovieToRightHalf()` clones the finished Smacker frame
-  into the middle of each eye half at **y = 0** (`game/VRStereo.cpp:1114-1190`, blits at
-  `:1184/:1185/:1190`). Changing that y to `nH/8` moves it down by 1/8.
-- **Fix direction:** shift the movie clone's destination y down by ~`screenHeight/8` (keep the
-  offset valid when the frame is smaller than the half).
+  into the middle of each eye half at **y = 0** (`game/VRStereo.cpp:1224`), so the cloned frame sits
+  at the top of the screen.
+- **Fix applied (2026-10-14):** the two clones (and the not-detected fallback) are now drawn at
+  `y = screenHeight / 8`, clamped to `screenHeight - frameHeight` so a full-height frame still lands
+  fully on-screen. Build clean (712704 bytes), deployed; needs a device pass.
 
 ---
 
