@@ -353,10 +353,10 @@ hurt / explosion flash (#28), the muzzle flash at the visible gun (#29), the tri
 menu (#30), the lower-than-origin weapon model (#34) and dominant hand (#35) are all
 verified. Supersampling (#7) is dropped, #18 folds into the #19 zoom removal, and the
 autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
-**removed/cancelled** - players save/load manually. No bug is still **open**: #12
-(loading/bumper/credits screens mono), #20 (crouch now lowers the eyes), #22 (per-axis
-stick dead zone) are all **fixed in code (14 Oct)**, awaiting a device pass; #26
-(intro-video y-offset + 50 px) is **fixed and verified on device (14 Oct)**.
+**removed/cancelled** - players save/load manually. No bug is still **open**: #20
+(crouch now lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code
+(14 Oct)**, awaiting a device pass; #12 (loading/bumper/credits) and #26 (intro-video
+y-offset + 50 px) are **fixed and verified on device (14 Oct)**.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -385,10 +385,10 @@ Progress: **Phases 0-5 are code-complete and the port has run on the target**
 that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#36)** - that file,
 not the phase statuses above, is the current source of truth. As of the 14 Oct
 2026 pass no bug is still **open**: #21 was confirmed verified by the user, and
-#12 (loading/bumper/credits per eye), #20 (crouch lowers the eyes), #22 (per-axis
-stick dead zone) are **fixed in code**, awaiting a device pass, and #26
-(intro-video offset + 50 px) is **fixed and verified on device**. `#4` (fire) and
-`#9` (sync hold) were verified on the desktop with the XrApi UDP Tester.
+#20 (crouch lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code**,
+awaiting a device pass, while #12 (loading/bumper/credits per eye) and #26 (intro-video
+offset + 50 px) are **fixed and verified on device**. `#4` (fire) and `#9` (sync hold)
+were verified on the desktop with the XrApi UDP Tester.
 
 The 11 Oct 2026 session added six more in-code fixes (all since verified on device):
 
@@ -524,16 +524,17 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   `0.15` for both axes; it now uses a forward/back dead zone of `0.08` and a strafe dead zone of
   `0.20`, rescales each axis from its own edge, then caps the combined magnitude at 1, so a
   mostly-forward push no longer drifts into a diagonal. Build clean; awaiting a device pass.
-- **#12 loading / bumper / credits per eye (fixed in code, 14 Oct)** - these screens are flat 2D
-  blitted straight to the full SBS window, so each eye saw half of one picture. They now go through
-  the same per-eye treatment as the menus (#5): `UpdateLoadingLevelState()` and `UpdateBumperState()`
-  mirror `UpdateMenuState()` (begin the frame, render the polygrid through the panel in stereo, then
-  draw the 2D art once per eye between `Begin2D(nEye)`/`End2D()`), and the credits / intro states now
-  call a new `UpdateCreditsStereo()` helper that wraps `m_credits.Update()` the same way. `Credits.cpp`
-  lays the text out on the mod's small virtual screen (`g_VRStereo.GetMenuLayoutSize()`) so the
-  per-eye remap centres it in each eye and picks the larger font. Documented as edit 22 in
-  `RiotClientShell.cpp.md`, edit 2 in `RiotClientShell.h.md`, and a new `Credits.cpp.md`. Build clean;
-  awaiting a device pass.
+- **#12 loading / bumper / credits per eye (fixed and verified on device, 14 Oct)** - these screens are
+  flat 2D blitted straight to the full SBS window, so each eye saw half of one picture. They now go
+  through the same per-eye treatment as the menus (#5): `UpdateLoadingLevelState()` and
+  `UpdateBumperState()` mirror `UpdateMenuState()` (begin the frame, render the polygrid through the
+  panel in stereo, then draw the 2D art once per eye between `Begin2D(nEye)`/`End2D()`), and the
+  credits / intro states now call a new `UpdateCreditsStereo()` helper that wraps `m_credits.Update()`
+  the same way. `Credits.cpp` lays the text out on the mod's small virtual screen
+  (`g_VRStereo.GetMenuLayoutSize()`) so the per-eye remap centres it in each eye and picks the larger
+  font. Documented as edit 22 in `RiotClientShell.cpp.md`, edit 2 in `RiotClientShell.h.md`, and a new
+  `Credits.cpp.md`. Owner confirmed the loading screen and credits ("great"); the bumper shares the
+  path.
 - **#26 intro video lowered (fixed and verified on device, 14 Oct)** - `ShiftMovieToRightHalf()` now
   blits the per-eye movie clones at `y = screenHeight / 8 + 50`, clamped so a full-height frame still
   lands fully on-screen, instead of at `y = 0` (the `+ 50` is the owner's 14 Oct "about 50 px lower"
@@ -567,11 +568,11 @@ The immediate next actions are:
    was wiping the `V` key the transform injects from the same press; `ClearInput()`
    is now skipped for `B` (the leaked `B` is already ignored by the #31 guard) and a
    single B press transforms both ways.
-4. **Device-verify the last in-code fixes.** No tracked bug is still open: #12
-   (loading / bumper / **credits** screen per eye - fix like #5), #20 (crouch now
-   lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code (14 Oct)**
-   and await a device pass. #26 (intro-video y-offset + 50 px) is **fixed and verified
-   on device (14 Oct)**.
+4. **Device-verify the last in-code fixes.** No tracked bug is still open: #20
+   (crouch now lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code
+   (14 Oct)** and await a device pass. #12 (loading / bumper / **credits** screen per
+   eye) and #26 (intro-video y-offset + 50 px) are **fixed and verified on device
+   (14 Oct)**.
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource

@@ -19,8 +19,8 @@ shot origin), **#35** (dominant hand - user-confirmed) and **#36** (Right B tran
 were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed /
 cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #19), #24/#25/#33 (the
 autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
-appears fixed on device). **Fixed in code, awaiting a device pass:** #12 (loading/bumper/credits
-drawn per eye), #20 (crouch now lowers the eyes) and #22 (per-axis left-stick dead zone).
+appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch now lowers the eyes) and #22
+(per-axis left-stick dead zone).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -35,7 +35,7 @@ drawn per eye), #20 (crouch now lowers the eyes) and #22 (per-axis left-stick de
 | 9  | Game runs on when headset stalls | Fixed - verified (tester) |
 | 10 | Intro logo/movie mono | Fixed - verified (intro offset: #26) |
 | 11 | Motion-controller movement | Fixed - verified |
-| 12 | Loading/bumper/credits screens mono | Fixed in code (2026-10-14) - per-eye; needs a device pass |
+| 12 | Loading/bumper/credits screens mono | Fixed - verified (2026-10-14) - loading + credits confirmed; bumper shares the path |
 | 13 | Render resolution 640x480 | Fixed - verified |
 | 14 | Crosshair on by default | Fixed - verified |
 | 15 | Controller mapping | Fixed - verified (individual controls: #22) |
@@ -68,9 +68,6 @@ device pass, and a few items were removed/cancelled.
 
 **Fixed in code, awaiting a device pass:**
 
-- **#12 - Loading / bumper / credits screens render mono** (text unreadable, split across both
-  eyes). Now drawn per eye like the menus (#5); the credits are laid out on the mod's small virtual
-  screen so their text stays centred and legible in each eye.
 - **#20 - Crouch doesn't lower the VR camera**. The eyes now drop while the crouch controls are on
   (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
 - **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20).
@@ -474,7 +471,9 @@ device pass, and a few items were removed/cancelled.
 
 ## 12. Loading / bumper / credits screens render mono (text unreadable, split across both eyes)
 
-- **Status:** Fixed in code (2026-10-14) - awaiting device verification (mirrors #5)
+- **Status:** **Fixed - verified on device (2026-10-14)** - the owner confirmed the loading screen
+  and credits render correctly ("the fixes for loading screen and credits are great"); the bumper
+  screen shares the same per-eye path.
 - **Priority:** Medium (same flat-2D-per-eye class as #5 / #6 / #10)
 - **Observed:** The level **loading** screen (and the bumper screen) is drawn once, centered, on
   the full SBS canvas. With SBS active the runtime reads one image, so each eye sees half of one
@@ -1373,11 +1372,10 @@ device pass, and a few items were removed/cancelled.
   device. **Verified on device (2026-10-13):** the player confirms it works and is cheap enough.
 - **2D content per eye (#5, #6, #10, #12):** menus, splash, movies and the loading/bumper
   screens must all be centered in each eye; the engine video player runs in `Client.exe` and is
-  the one case that can't be re-projected from `CShell.dll`. **#5's menu virtual-layout is
-  verified on device (2026-10-13) - text is readable.** **#12 (loading / bumper screen) is still
-  mono/split with unreadable text (2026-10-13)** - fix it the same way as #5 (small virtual canvas +
-  per-eye `Begin2D`). #26 (intro movie y-offset) is the same movie path as #10. See #30 for the menu
-  trim.
+  the one case that can't be re-projected from `CShell.dll`. **#5's menu virtual-layout and #12's
+  loading/bumper/credits screens are both verified on device (2026-10-13 / 2026-10-14) - text is
+  readable.** #26 (intro movie y-offset) is the same movie path as #10, verified 2026-10-14. See #30
+  for the menu trim.
 - **Settings menu (#30, #5):** with the menu now readable (#5, verified) the in-game VR page is
   being **trimmed** to a short list (dominant hand, hand roll flip, turning, smooth turn speed,
   recentre, reset) with most rows removed and the removed options pinned to the fixed defaults
