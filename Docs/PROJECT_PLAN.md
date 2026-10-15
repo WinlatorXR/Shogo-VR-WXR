@@ -354,9 +354,10 @@ menu (#30), the lower-than-origin weapon model (#34) and dominant hand (#35) are
 verified. Supersampling (#7) is dropped, #18 folds into the #19 zoom removal, and the
 autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
 **removed/cancelled** - players save/load manually. No bug is still **open**: #20
-(crouch now lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code
-(14 Oct)**, awaiting a device pass; #12 (loading/bumper/credits) and #26 (intro-video
-y-offset + 50 px) are **fixed and verified on device (14 Oct)**.
+(crouch lowers the eyes and the held gun), #22 (per-axis stick dead zone, strafe 20%) and
+#37 (right-stick weapon-swap dead zone) are **fixed in code (14 Oct)**, awaiting a device
+pass; #12 (loading/bumper/credits) and #26 (intro-video y-offset + 50 px) are **fixed and
+verified on device (14 Oct)**.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
 (sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
 issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
@@ -382,10 +383,11 @@ issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
 Progress: **Phases 0-5 are code-complete and the port has run on the target**
 (Meta Quest 3 via WinlatorXR, launched from `ShogoVR.exe`, 2800x1400 SBS). The
 10-13 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
-that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#36)** - that file,
+that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#37)** - that file,
 not the phase statuses above, is the current source of truth. As of the 14 Oct
 2026 pass no bug is still **open**: #21 was confirmed verified by the user, and
-#20 (crouch lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code**,
+#20 (crouch lowers the eyes **and the held gun**), #22 (per-axis stick dead zone, strafe
+20%) and #37 (right-stick weapon-swap dead zone) are **fixed in code**,
 awaiting a device pass, while #12 (loading/bumper/credits per eye) and #26 (intro-video
 offset + 50 px) are **fixed and verified on device**. `#4` (fire) and `#9` (sync hold)
 were verified on the desktop with the XrApi UDP Tester.
@@ -465,8 +467,11 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   **Camera half fixed in code (14 Oct):** the mod now lowers the HMD world position while
   crouched - `CVRStereo::UpdateCrouchOffset()` eases `m_fCrouchAmt` toward `IsCrouchOn()`, and
   `RenderStereo()` subtracts `m_fCrouchAmt * VRCrouchDrop` (new setting, default 0.6 m) along the
-  body's up axis from the eye base position, so the whole stereo view (and the held gun) drops
-  smoothly and lifts on release. Build clean; awaiting a device pass. The body showing in
+  body's up axis from the eye base position, so the stereo view drops smoothly and lifts on release.
+  **Held-gun follow-up (14 Oct):** the camera object is restored to its standing spot after the eyes
+  are drawn, so the gun (and muzzle flash / aim) still saw the un-crouched camera and stayed up;
+  `GetHandWorld()` now subtracts the same eased drop from the hand position, so the gun drops with
+  the eyes too. Build clean; awaiting a device pass. The body showing in
   third-person / cutscene views moved to #21.
 - **#28 hurt / explosion flash** - the shell now hands the tint colour to the mod
   (`g_VRStereo.SetScreenFlash`) instead of using the engine camera light-add (whose
@@ -522,8 +527,13 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   overlap is gone. Build clean; **verified on device (2026-10-14, user-confirmed)**.
 - **#22 per-axis left-stick dead zone (fixed in code, 14 Oct)** - `GetMoveAxes()` used one radial
   `0.15` for both axes; it now uses a forward/back dead zone of `0.08` and a strafe dead zone of
-  `0.20`, rescales each axis from its own edge, then caps the combined magnitude at 1, so a
-  mostly-forward push no longer drifts into a diagonal. Build clean; awaiting a device pass.
+  `0.20` (20%, the 14 Oct device request), rescales each axis from its own edge, then caps the
+  combined magnitude at 1, so a mostly-forward push no longer drifts into a diagonal. Build clean;
+  awaiting a device pass.
+- **#37 right-stick up/down weapon-swap dead zone (fixed in code, 14 Oct)** - `PollWeaponCycle()`
+  cycled weapons as soon as `|turnY| > 0.7`, so a light up/down nudge could change weapons. It now
+  requires a deliberate push (`fSwapPress = 0.80`) and re-arms only below `fSwapReset = 0.45`
+  (hysteresis). Build clean; awaiting a device pass.
 - **#12 loading / bumper / credits per eye (fixed and verified on device, 14 Oct)** - these screens are
   flat 2D blitted straight to the full SBS window, so each eye saw half of one picture. They now go
   through the same per-eye treatment as the menus (#5): `UpdateLoadingLevelState()` and
@@ -569,10 +579,10 @@ The immediate next actions are:
    is now skipped for `B` (the leaked `B` is already ignored by the #31 guard) and a
    single B press transforms both ways.
 4. **Device-verify the last in-code fixes.** No tracked bug is still open: #20
-   (crouch now lowers the eyes) and #22 (per-axis stick dead zone) are **fixed in code
-   (14 Oct)** and await a device pass. #12 (loading / bumper / **credits** screen per
-   eye) and #26 (intro-video y-offset + 50 px) are **fixed and verified on device
-   (14 Oct)**.
+   (crouch lowers the eyes **and the held gun**), #22 (per-axis stick dead zone, strafe
+   20%) and #37 (right-stick weapon-swap dead zone) are **fixed in code (14 Oct)** and
+   await a device pass. #12 (loading / bumper / **credits** screen per eye) and #26
+   (intro-video y-offset + 50 px) are **fixed and verified on device (14 Oct)**.
 5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource

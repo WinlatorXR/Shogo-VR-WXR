@@ -2291,8 +2291,8 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	// forward push doesn't drift into a diagonal, and a smaller one
 	// forward/back (the most common input).  Each axis is rescaled from its
 	// own dead-zone edge back to 0..1 so movement still starts gently.
-	const DFLOAT fDeadFwd  = 0.08f;		// forward / back   (5-10%)
-	const DFLOAT fDeadSide = 0.20f;		// strafe left/right (>=15%)
+	const DFLOAT fDeadFwd  = 0.08f;		// forward / back    (5-10%)
+	const DFLOAT fDeadSide = 0.20f;		// strafe left/right (20%)
 
 	DFLOAT ax = (DFLOAT)fabs(m_fMoveX);
 	DFLOAT ay = (DFLOAT)fabs(m_fMoveY);
@@ -2455,13 +2455,20 @@ int CVRStereo::PollWeaponCycle()
 		return 0;
 	}
 
+	// Up/down on the right stick changes weapon.  Require a deliberate push so
+	// a light nudge - or drift while turning - doesn't cycle weapons by
+	// accident: the stick has to clear this dead zone before a swap fires, and
+	// fall back below the (lower) reset before it can fire again (hysteresis).
+	const DFLOAT fSwapPress = 0.80f;
+	const DFLOAT fSwapReset = 0.45f;
+
 	DFLOAT y = m_fTurnY, ax = (DFLOAT)fabs(m_fTurnX), ay = (DFLOAT)fabs(m_fTurnY);
-	if (m_nWeaponLatch == 0 && ay > 0.7f && ay > ax)
+	if (m_nWeaponLatch == 0 && ay > fSwapPress && ay > ax)
 	{
 		m_nWeaponLatch = (y > 0.0f) ? 1 : -1;
 		return m_nWeaponLatch;
 	}
-	if (ay < 0.3f) m_nWeaponLatch = 0;
+	if (ay < fSwapReset) m_nWeaponLatch = 0;
 	return 0;
 }
 
@@ -2515,6 +2522,19 @@ void CVRStereo::GetHandWorld(const DVector &vCamPos, DVector &vPos, DVector &vF,
 	VEC_MULSCALAR(vT,   bU, m_vRightP.y * fScale);	VEC_ADD(vPos, vPos, vT);
 	VEC_MULSCALAR(vT,   bF, m_vRightP.z * fScale);	VEC_ADD(vPos, vPos, vT);
 	VEC_ADD(vPos, vPos, vCamPos);
+
+	// Crouch (#20): RenderStereo lowers the camera to fake ducking, but it
+	// restores the camera object to its standing spot once the eyes are drawn,
+	// so anything placed relative to the camera (the held gun, the muzzle
+	// flash, the aim ray, the hidden first-person model that still fires the
+	// shots) would stay up while the eyes drop.  Drop them by the same amount,
+	// along the same body up axis, so the whole view moves together.
+	if (m_fCrouchAmt > 0.0f)
+	{
+		DFLOAT fDrop = m_fCrouchAmt * m_vtCrouchDrop.GetFloat(0.6f) * fScale;
+		VEC_MULSCALAR(vT, bU, fDrop);
+		VEC_SUB(vPos, vPos, vT);
+	}
 
 	VEC_MULSCALAR(vF, bR, m_vAimF.x);
 	VEC_MULSCALAR(vT, bU, m_vAimF.y);	VEC_ADD(vF, vF, vT);

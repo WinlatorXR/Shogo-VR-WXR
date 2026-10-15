@@ -19,8 +19,9 @@ shot origin), **#35** (dominant hand - user-confirmed) and **#36** (Right B tran
 were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed /
 cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #19), #24/#25/#33 (the
 autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
-appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch now lowers the eyes) and #22
-(per-axis left-stick dead zone).
+appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch lowers the eyes
+**and** the held gun), #22 (per-axis left-stick dead zone; strafe 20%) and #37 (right-stick up/down
+weapon-swap dead zone).
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -43,9 +44,9 @@ appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch
 | 17 | Face buttons leak X/Y/B/A | Fixed - verified (A/B leak: #31) |
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
-| 20 | Crouch doesn't lower the VR camera | Fixed in code (2026-10-14) - eyes lower; needs a device pass |
+| 20 | Crouch doesn't lower the VR camera | Fixed in code (2026-10-14) - eyes + gun lower; needs a device pass |
 | 21 | Body shown in 3rd-person / cutscenes | Fixed - verified (2026-10-14, user-confirmed) |
-| 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis; needs a device pass |
+| 22 | Left-stick deadzone | Fixed in code (2026-10-14) - per-axis (strafe 20%); needs a device pass |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
 | 24 | On-foot autosave | Removed / cancelled (2026-10-14) - manual save/load |
 | 25 | Autosave re-arms after load | Removed / cancelled (2026-10-14) - manual save/load |
@@ -60,6 +61,7 @@ appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch
 | 34 | Weapon model lower than shot origin | Fixed - verified (2026-10-14) |
 | 35 | Left/right dominant hand does nothing | Fixed - verified (2026-10-14, user-confirmed) |
 | 36 | Right B (transform) needs repeated taps | Fixed - verified (2026-10-14) |
+| 37 | Right-stick up/down swaps weapons too easily | Fixed in code (2026-10-14) - needs a device pass |
 
 ## Open items (as of 2026-10-14)
 
@@ -68,9 +70,10 @@ device pass, and a few items were removed/cancelled.
 
 **Fixed in code, awaiting a device pass:**
 
-- **#20 - Crouch doesn't lower the VR camera**. The eyes now drop while the crouch controls are on
-  (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
-- **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20).
+- **#20 - Crouch doesn't lower the VR camera**. The eyes **and the held gun** now drop while the
+  crouch controls are on (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
+- **#22 - per-axis left-stick dead zone** (forward/back 0.08, strafe 0.20 = 20%).
+- **#37 - right-stick up/down weapon swap** now needs a deliberate push (engage 0.80, re-arm 0.45).
 
 ---
 
@@ -755,7 +758,8 @@ device pass, and a few items were removed/cancelled.
 
 ## 20. Crouch doesn't lower the VR camera (Left X toggle, Left stick click hold)
 
-- **Status:** Fixed in code (2026-10-14) - awaiting device verification (crouch now drops the eyes).
+- **Status:** Fixed in code (2026-10-14) - awaiting device verification (crouch drops the eyes **and**
+  the held gun).
 - **Priority:** Medium (dead inputs; may matter on later levels / low gaps)
 - **Observed (device, 2026-10-12):** Left X (crouch toggle) and Left stick click (crouch hold)
   give no visible crouch.
@@ -785,9 +789,17 @@ device pass, and a few items were removed/cancelled.
   `RenderStereo()`, when the frame is a tracked immersive one, that amount is subtracted along the
   body's up axis from `vBasePos`:
   `fDrop = m_fCrouchAmt * VRCrouchDrop * fWorldScale` (new `VRCrouchDrop` setting, default `0.6` m).
-  So the whole stereo view (and the held weapon / aim, which are anchored to the eyes) drops
-  smoothly and lifts back on release. No ShogoSource change - entirely in `game/VRStereo.cpp` /
-  `game/VRStereo.h`.
+  So the stereo view drops smoothly and lifts back on release. No ShogoSource change - entirely in
+  `game/VRStereo.cpp` / `game/VRStereo.h`.
+- **Device result (2026-10-14):** the eyes drop, but the **held gun stayed up**, which felt wrong.
+  The camera object is restored to its standing spot once `RenderStereo()` has drawn the eyes, so
+  `UpdateWeaponModel()` - and everything else that places the gun, muzzle flash and aim relative to
+  `GetObjectPos(m_hCamera)` - still saw the *un-crouched* camera.
+- **Follow-up fix (2026-10-14, held gun):** `GetHandWorld()` now subtracts the same eased drop
+  (`m_fCrouchAmt * VRCrouchDrop`, along the body up axis) from the hand position. That one place
+  feeds the held gun (`UpdateHeldGun`), the muzzle flash (`GetMuzzleFlashWorld`), the aim ray
+  (`UpdateAimMarker`) and the hidden first-person model that still fires the shots
+  (`AdjustWeaponPose`), so the whole view now drops together with the eyes. Needs a device pass.
 - **Refs:** `game/XrApiUDP.cpp:435-436`; `game/VRStereo.cpp:2131-2141`
   (`VRCommandOn`/`COMMAND_ID_DUCK`), `game/VRStereo.h:373` (`m_bCrouchOn`);
   `ShogoSource/ClientShellDLL/CMoveMgr.cpp:178-181, 725-728, 835-838`;
@@ -837,13 +849,16 @@ device pass, and a few items were removed/cancelled.
   component survives whenever the stick is mostly forward.
 - **Fix applied (2026-10-14) - per-axis (anisotropic) dead zone:** `GetMoveAxes()` no longer uses the
   single radial `0.15`.  Each axis now has its own threshold and is rescaled from its edge back to
-  `0..1`: forward/back **0.08** (5-10%) and strafe left/right **0.20** (>=15%).  The combined vector
+  `0..1`: forward/back **0.08** (5-10%) and strafe left/right **0.20** (20%).  The combined vector
   is then capped at magnitude 1 so a diagonal is no longer faster than a straight push, and the
   rotate-to-aim transform is unchanged.  Net effect: a mostly-forward push no longer drifts
   sideways, while deliberate diagonals still work. Build clean (712704 bytes), deployed; needs a
   device pass.
+- **Follow-up (2026-10-14):** device feedback asked for **≈20%** left/right with forward/back left
+  as-is (8%). Strafe is already `0.20` (20%), so that value is kept and the comment now states it;
+  rebuilt and redeployed so the headset is on the current value.
 - **Refs:** `game/VRStereo.cpp:2260-2286` (`GetMoveAxes`), `:2230-2241` (`VRCommandOn` movement),
-  #11.
+  #11, #37.
 
 ---
 
@@ -1307,6 +1322,22 @@ device pass, and a few items were removed/cancelled.
 - **Refs:** `game/VRStereo.cpp` `RequestTransform` / `ReleaseTransformKey` / `UpdateInput`;
   `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `OnKeyDown` / `OnCommandOn`;
   `ShogoSource/ObjectDLL/PlayerObj.cpp` `ToggleVehicleMode`; #17, #23, #31.
+
+---
+
+## 37. Right-stick up/down changes weapon too easily (accidental swaps)
+
+- **Status:** Fixed in code (2026-10-14) - needs a device pass.
+- **Priority:** Medium (weapons change by accident while turning / moving)
+- **Observed (device, 2026-10-14):** weapon swapping on the right stick's up/down axis fires too
+  easily - a light nudge (or drift) cycles weapons, so it does not feel intentional.
+- **Root cause:** `PollWeaponCycle()` fired a swap as soon as `|turnY| > 0.7` (and the vertical
+  dominated the horizontal), and only re-armed below `0.3`, so a modest up/down push was enough.
+- **Fix applied (2026-10-14):** a deliberate push is now required. The swap engages above
+  `fSwapPress = 0.80` and re-arms only below `fSwapReset = 0.45` (hysteresis), so a light up/down
+  nudge no longer cycles weapons. Turning is still suppressed by `StickTurn()` while the stick is
+  pushed mostly vertically (`|turnY| > 0.6 && |turnY| > |turnX|`), unchanged.
+- **Refs:** `game/VRStereo.cpp` `PollWeaponCycle`, `StickTurn`; #15, #22.
 
 ---
 
