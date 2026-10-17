@@ -14,7 +14,7 @@ Code added or modified from the parent project in this fork/port over to Winlato
 
 This version has much less customization available to make it a clean open-and-play experience for standalone players, if you have the ability to play the original PCVR mod instead, absolutely do for the best experience!
 
-**Updates:** the standalone launcher (`ShogoVR.exe`) checks this repository's [`AutoUpdate`](AutoUpdate) folder when it starts. If a newer stable build has been published it asks *"A new update is available, download now?"* and, on **Yes**, downloads the new `CShell.dll` and installs it before the game starts. With no internet, or if a download fails, it simply launches the game with what is already installed; what happened goes to `ShogoVR_update.log` next to `ShogoVR.exe`.
+**Updates:** the standalone launcher (`ShogoVR.exe`) checks this repository's [`AutoUpdate`](AutoUpdate) folder when it starts. If a newer stable build has been published it asks *"A new update is available, download now?"* and, on **Yes**, downloads the new `CShell.dll` and installs it before the game starts. With no internet, "No" button click, or if a download fails, it simply launches the game with what is already installed; what happened goes to `ShogoVR_update.log` next to `ShogoVR.exe`.
 
 **SHOGO-VR-WXR CONTROLS**
 
