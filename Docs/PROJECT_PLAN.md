@@ -743,6 +743,10 @@ normal launch with whatever DLL is currently installed.
   Division\`) and the git release directory (`Release/`) - and nowhere else. `Release/` also holds
   the human-written `ReadMe.txt`, the human-edited `version.txt` and past packaged zips under
   `Release/Releases/`; those are not touched by a deploy.
+- **Packaging (by hand):** the public release ZIPs (`Release/Releases/…-vNN.zip` - alphas and betas
+  included) are assembled by the owner, not by any script or tooling here. Built executables are
+  **never tracked in git** (`*.exe` is ignored): the repo holds the source, the docs and the
+  `AutoUpdate/` release artifacts (a DLL and text files), never a built `ShogoVR.exe` or a zip.
 - **Staged for the 0.7 release (17 Oct):** `CShell.dll` rebuilt and confirmed **byte-identical** to
   the device-verified / hand-picked DLL (`5EE4A7C4...`), `ShogoVR.exe` rebuilt, and both copied into
   the GOG folder and `Release/` (`Release/ShogoVR.exe` and the GOG copy are the same bytes as

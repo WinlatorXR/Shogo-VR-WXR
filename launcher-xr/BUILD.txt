@@ -25,7 +25,9 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   into exactly two places - the GOG Shogo directory and the git Release/
   directory - and nowhere else.  AutoUpdate/, Release/ReadMe.txt and every
   version.txt in the tree are human-owned (hand-picked / hand-written release
-  content): a build or deploy never writes them.
+  content): a build or deploy never writes them.  The public release ZIPs
+  (alphas and betas included) are put together by hand too, and built EXEs are
+  never tracked in git.
 
   Auto-update:  before launching, ShogoVR.exe reads the release channel
   (see Docs/PROJECT_PLAN.md section 7) - version.txt and notes.txt from
