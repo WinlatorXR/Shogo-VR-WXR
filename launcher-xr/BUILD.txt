@@ -42,6 +42,9 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   The updater links winhttp.lib; the source carries
   #pragma comment(lib, "winhttp.lib"), so the link lines above need no change.
 
-  Release step:  put the new CShell.dll in AutoUpdate/, bump
-  AutoUpdate/version.txt AND launcher-xr/version.txt to the same number, and
-  rewrite AutoUpdate/notes.txt.
+  Release step (by hand, for stable human-approved releases only):  put the new
+  CShell.dll in AutoUpdate/, rewrite AutoUpdate/notes.txt, then bump
+  AutoUpdate/version.txt AND launcher-xr/version.txt to the same new number.
+  version.txt is the release gate - nothing bumps it automatically, and a new
+  DLL with an unchanged version.txt is never offered to anybody (so an early
+  prerelease build can sit on main ahead of its version bump).

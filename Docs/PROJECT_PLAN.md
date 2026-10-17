@@ -659,6 +659,13 @@ The launcher ships its **own** `version.txt` next to `ShogoVR.exe`
 (`launcher-xr/version.txt`, currently `0.6`) - that is the locally "installed" version it
 compares against.
 
+`version.txt` is the **release gate**, and it is edited **by hand, for stable, human-approved
+releases only** - nothing bumps it automatically, and no build step reads or writes it.
+Because the launcher's decision is based on that number alone, dropping a new `CShell.dll`
+(or new notes) into `AutoUpdate/` does *not* offer the update to anyone: the release goes live
+only when `AutoUpdate/version.txt` is bumped by hand. That makes prerelease playtesting safe -
+the new DLL can sit on `main` ahead of its version number.
+
 ### Update flow
 
 1. On start, if the container has internet access, the launcher downloads
@@ -705,6 +712,7 @@ normal launch with whatever DLL is currently installed.
   a faulty `CShell.dll` URL after a good prompt (nothing installed, staged file kept); the
   retry after that failure (installs); and a failed `CShell.dll` copy (old `version.txt`
   restored, staged files kept). Still to try on device.
-- **Release step (each stable release):** rebuild `CShell.dll`, copy it to
-  `AutoUpdate/CShell.dll`, bump `AutoUpdate/version.txt` **and** `launcher-xr/version.txt` to
-  the same number, and rewrite `AutoUpdate/notes.txt`.
+- **Release step (each stable release, by hand):** rebuild `CShell.dll`, copy it to
+  `AutoUpdate/CShell.dll`, rewrite `AutoUpdate/notes.txt`, then bump `AutoUpdate/version.txt`
+  **and** `launcher-xr/version.txt` to the same new number. The version bump is what actually
+  publishes the release - a new DLL with an unchanged `version.txt` reaches nobody.
