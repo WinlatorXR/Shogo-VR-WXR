@@ -13,7 +13,6 @@ build/obj/
 build/out/
 build/overlay/
 # Never commit these
-CShell.dll
 *.patch
 __pycache__/
 ShogoSource/
