@@ -20,6 +20,13 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   and start it from there.  Its icon comes from assets/shogo.ico (the icon of
   Shogo.exe).
 
+  Deploying a release means putting the rebuilt ShogoVR.exe and the ShogoVR
+  sub-folder (CShell.dll, plus AUTHORS.txt / NOTICE.txt in a packaged release)
+  into exactly two places - the GOG Shogo directory and the git Release/
+  directory - and nowhere else.  AutoUpdate/, Release/ReadMe.txt and every
+  version.txt in the tree are human-owned (hand-picked / hand-written release
+  content): a build or deploy never writes them.
+
   Auto-update:  before launching, ShogoVR.exe reads the release channel
   (see Docs/PROJECT_PLAN.md section 7) - version.txt and notes.txt from
   https://raw.githubusercontent.com/WinlatorXR/Shogo-VR-WXR/refs/heads/main/AutoUpdate/
@@ -39,12 +46,19 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   version.txt so the update is offered again next time).  What happened lands in
   ShogoVR_update.log next to the EXE.
 
+  The install assumes the ShogoVR folder already exists next to Client.exe (it
+  is part of every release package); if it is missing, the CShell.dll copy
+  fails, and the update is rolled back and offered again next launch (it never
+  installs half an update).
+
   The updater links winhttp.lib; the source carries
   #pragma comment(lib, "winhttp.lib"), so the link lines above need no change.
 
   Release step (by hand, for stable human-approved releases only):  put the new
   CShell.dll in AutoUpdate/, rewrite AutoUpdate/notes.txt, then bump
-  AutoUpdate/version.txt AND launcher-xr/version.txt to the same new number.
+  AutoUpdate/version.txt AND launcher-xr/version.txt to the same new number and
+  commit + push - the bump is what publishes the release, and nothing reaches
+  users until it is on main.
   version.txt is the release gate - nothing bumps it automatically, and a new
   DLL with an unchanged version.txt is never offered to anybody (so an early
   prerelease build can sit on main ahead of its version bump).

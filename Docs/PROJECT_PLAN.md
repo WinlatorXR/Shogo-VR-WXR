@@ -353,12 +353,11 @@ hurt / explosion flash (#28), the muzzle flash at the visible gun (#29), the tri
 menu (#30), the lower-than-origin weapon model (#34) and dominant hand (#35) are all
 verified. Supersampling (#7) is dropped, #18 folds into the #19 zoom removal, and the
 autosave family (#24/#25/#33) plus the intermittent jump flag (#32) are
-**removed/cancelled** - players save/load manually. No bug is still **open**: #22 (the
-single 15% left-stick move dead zone) and #38 (the Keyboard / Mouse / Joystick pages
-are hidden from Options) are **fixed and verified on device (17 Oct)**; #20 (crouch
-lowers the eyes and the held gun), #37 (right-stick weapon-swap dead zone) and #39
-(Quit exits immediately) are **fixed in code (14-15 Oct)**, now tunable / present on the
-VR screen and in the config, awaiting a device pass; #12
+**removed/cancelled** - players save/load manually. No bug is still **open**, and none awaits a
+device pass: #20 (crouch lowers the eyes and the held gun), #22 (single 15% left-stick move dead
+zone), #37 (right-stick weapon-swap dead zone), #38 (the Keyboard / Mouse / Joystick pages are
+hidden from Options) and #39 (Quit exits immediately) are all **fixed and verified on device
+(17 Oct)** - the dead zones are live settings on the VR screen and in the config; #12
 (loading/bumper/credits) and #26 (intro-video y-offset + 50 px) are **fixed and verified
 on device (14 Oct)**.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
@@ -388,14 +387,13 @@ Progress: **Phases 0-5 are code-complete and the port has run on the target**
 10-13 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
 that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#39)** - that file,
 not the phase statuses above, is the current source of truth. As of the 17 Oct
-2026 pass no bug is still **open**: #22 (the single 15% left-stick move dead zone) and
-#38 (the Keyboard / Mouse / Joystick pages are hidden from Options) joined the
-**verified-on-device** set, while #20 (crouch lowers the eyes **and the held gun**),
-#37 (right-stick weapon-swap dead zone) and #39 (Quit exits immediately) are
-**fixed in code** - the dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`)
-on the VR screen and in `ShogoVR.ini`, awaiting a device pass - while #12 (loading/bumper/credits
-per eye) and #26 (intro-video offset + 50 px) are **fixed and verified on device**. `#4` (fire) and
-`#9` (sync hold) were verified on the desktop with the XrApi UDP Tester.
+2026 pass **no bug is open and none is awaiting a device pass**: #20 (crouch lowers the eyes **and
+the held gun**), #22 (the single 15% left-stick move dead zone), #37 (right-stick weapon-swap dead
+zone), #38 (the Keyboard / Mouse / Joystick pages are hidden from Options) and #39 (Quit exits
+immediately) were all **verified on device** and joined the verified set. The dead zones are live
+settings (`VRMoveDeadZone`, `VRWeaponSwapDead`) on the VR screen and in `ShogoVR.ini`. #12
+(loading/bumper/credits per eye) and #26 (intro-video offset + 50 px) are **fixed and verified on
+device**. `#4` (fire) and `#9` (sync hold) were verified on the desktop with the XrApi UDP Tester.
 
 The 11 Oct 2026 session added six more in-code fixes (all since verified on device):
 
@@ -476,8 +474,8 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   **Held-gun follow-up (14 Oct):** the camera object is restored to its standing spot after the eyes
   are drawn, so the gun (and muzzle flash / aim) still saw the un-crouched camera and stayed up;
   `GetHandWorld()` now subtracts the same eased drop from the hand position, so the gun drops with
-  the eyes too. Build clean; awaiting a device pass. The body showing in
-  third-person / cutscene views moved to #21.
+  the eyes too. **Verified on device (2026-10-17):** the eyes and the held gun drop together while
+  crouched. The body showing in third-person / cutscene views moved to #21.
 - **#28 hurt / explosion flash** - the shell now hands the tint colour to the mod
   (`g_VRStereo.SetScreenFlash`) instead of using the engine camera light-add (whose
   full-screen quad broke under the stereo render), and the mod draws a clean
@@ -534,23 +532,23 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   only in normal first-person gameplay. In third-person (chase), cutscene (external camera) and
   death / spectator views the game's own model is the one shown, so the "two mechs / two players"
   overlap is gone. Build clean; **verified on device (2026-10-14, user-confirmed)**.
-- **#22 per-axis left-stick dead zone (fixed in code, 14 Oct)** - `GetMoveAxes()` used one radial
+- **#22 single left-stick move dead zone (fixed and verified, 14-17 Oct)** - `GetMoveAxes()` used one radial
   `0.15` for both axes; it now uses a forward/back dead zone of `0.08` and a strafe dead zone of
   `0.20` (20%, the 14 Oct device request), rescales each axis from its own edge, then caps the
-  combined magnitude at 1, so a mostly-forward push no longer drifts into a diagonal. Build clean;
-  awaiting a device pass. **Follow-up (14 Oct):** both thresholds are now live settings
+  combined magnitude at 1, so a mostly-forward push no longer drifts into a diagonal. **Follow-up
+  (14 Oct):** both thresholds are now live settings
   (`VRMoveDeadZoneX` = 0.20, `VRMoveDeadZoneY` = 0.08, clamped to `0..0.95`), tunable in
   `ShogoVR.ini` and on the VR screen. **Follow-up (15 Oct):** the split was dropped in favour of a
   **single** `VRMoveDeadZone` (default 0.15 = 15%, clamped to `0..0.95`) applied to both axes; the two
   per-axis settings and their VR rows were removed. The per-axis application is kept, so a
   mostly-forward push still cannot drift sideways. **Verified on device (17 Oct, user-confirmed):** the
   single 15% move dead zone ("confirmed for now").
-- **#37 right-stick up/down weapon-swap dead zone (fixed in code, 14 Oct)** - `PollWeaponCycle()`
+- **#37 right-stick up/down weapon-swap dead zone (fixed and verified, 14-17 Oct)** - `PollWeaponCycle()`
   cycled weapons as soon as `|turnY| > 0.7`, so a light up/down nudge could change weapons. It now
   requires a deliberate push (`fSwapPress = 0.80`) and re-arms only below `fSwapReset = 0.45`
-  (hysteresis). Build clean; awaiting a device pass. **Follow-up (14 Oct):** the press threshold is
+  (hysteresis). **Follow-up (14 Oct):** the press threshold is
   now the live setting `VRWeaponSwapDead` (0.80; the reset stays 0.35 below it), tunable in
-  `ShogoVR.ini` and on the VR screen.
+  `ShogoVR.ini` and on the VR screen. **Verified on device (17 Oct, user-confirmed).**
 - **#12 loading / bumper / credits per eye (fixed and verified on device, 14 Oct)** - these screens are
   flat 2D blitted straight to the full SBS window, so each eye saw half of one picture. They now go
   through the same per-eye treatment as the menus (#5): `UpdateLoadingLevelState()` and
@@ -576,11 +574,11 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   `Return()` branches deleted, and the item-count loops reduced from seven to four. Documented as
   section 6 in `ShogoSourceModifications/ClientShellDLL/OptionsMenu.cpp.md`.
   **Verified on device (17 Oct, user-confirmed).**
-- **#39 Quit exits immediately (fixed in code, 15 Oct)** - the Exit item used to show an "are you
+- **#39 Quit exits immediately (fixed and verified, 15-17 Oct)** - the Exit item used to show an "are you
   sure?" box that waits for the Y key, which the controllers cannot easily send. `CMainMenu::Return()`
   now calls `ExitGame(DTRUE, 0)` directly, so the box is never created and Quit is a single action.
-  Documented in the new `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean;
-  awaiting a device pass.
+  Documented in the new `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`.
+  **Verified on device (17 Oct, user-confirmed).**
 
 This brings the tracked ShogoSource notes to **eleven** files
 (`ShogoSourceModifications/` now also documents `RiotMenu.cpp`, `Credits.cpp` and `MainMenu.cpp`).
@@ -592,7 +590,8 @@ The immediate next actions are:
    (#19), the VR body hidden outside first-person (#21), shots-vs-model (#27), the hurt
    / explosion flash (#28), the muzzle flash at the visible gun (#29), the trimmed VR
    menu (#30), the lower-than-origin weapon model (#34), dominant hand (#35) and the
-   Right-A/B view + transform toggles (#23/#31/#36, B confirmed 14 Oct).
+   Right-A/B view + transform toggles (#23/#31/#36, B confirmed 14 Oct). The 17 Oct
+   headset pass cleared the last five: #20, #22, #37, #38 and #39.
 2. **Clean-up pass - verified.** Zoom is removed (#19, which also drops the #18
    Left-Y re-select), the in-game VR menu is trimmed to a short list (9 rows, including the
    move and weapon-swap dead zones; the move dead zones collapsed to one on 15 Oct), the
@@ -607,12 +606,12 @@ The immediate next actions are:
    was wiping the `V` key the transform injects from the same press; `ClearInput()`
    is now skipped for `B` (the leaked `B` is already ignored by the #31 guard) and a
    single B press transforms both ways.
-4. **Device-verify the last in-code fixes.** No tracked bug is still open: #22 (single
-   15% left-stick dead zone) and #38 (Keyboard / Mouse / Joystick pages hidden) are now
-   **verified on device (17 Oct, user-confirmed)**; #20 (crouch lowers the eyes **and the
-   held gun**), #37 (right-stick weapon-swap dead zone) and #39 (Quit exits immediately)
-   are **fixed in code (14-15 Oct)** and await a device pass;
-   the move and weapon-swap dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`)
+4. **Device verification is complete - nothing is left in code only.** No tracked bug is open
+   and none awaits a device pass: #20 (crouch lowers the eyes **and the held gun**), #22 (single
+   15% left-stick dead zone), #37 (right-stick weapon-swap dead zone), #38 (Keyboard / Mouse /
+   Joystick pages hidden) and #39 (Quit exits immediately) were all **verified on device
+   (17 Oct, user-confirmed)**.
+   The move and weapon-swap dead zones are live settings (`VRMoveDeadZone`, `VRWeaponSwapDead`)
    on the VR screen and in `ShogoVR.ini`, so they can be tuned in the headset. #12 (loading /
    bumper / **credits** screen per eye) and #26 (intro-video y-offset + 50 px) are **fixed and
    verified on device (14 Oct)**.
@@ -624,8 +623,12 @@ The immediate next actions are:
    version number and a short changelog live in `AutoUpdate/` (`CShell.dll`, `version.txt`,
    `notes.txt`), and `ShogoVR.exe` (`launcher-xr/`) now reads the online `version.txt`,
    prompts **YES/NO** when it differs from the local copy, and on YES stages `version.txt` +
-   `CShell.dll` in `ShogoVRUpdate` before installing them. Verified on the desktop; still to
-   be tried inside the container.
+   `CShell.dll` in `ShogoVRUpdate` before installing them. **The 0.7 release is prepared and
+   staged** (see section 7): the rebuilt `ShogoVR.exe` and the byte-identical `CShell.dll` are
+   deployed to the GOG game folder and to `Release/`, and the launcher's update / no-answer /
+   YES-install / NO-launch paths were re-checked against the deployed bytes. Publishing the
+   release (pushing `AutoUpdate/version.txt` so the updater offers it) is the owner's step;
+   running the updater inside the container under Wine/WinlatorXR is still untested.
 
 ---
 
@@ -643,8 +646,14 @@ The latest confirmed **stable** build of the mod lives in `AutoUpdate/` at the r
 | File | Purpose |
 |------|---------|
 | `AutoUpdate/CShell.dll` | the stable mod DLL (the exact bytes that ship) |
-| `AutoUpdate/version.txt` | the version number of that build (currently `0.6`) |
+| `AutoUpdate/version.txt` | the version number of that build (hand-edited release gate - `0.7` for the current release) |
 | `AutoUpdate/notes.txt` | one or two sentences describing what changed |
+
+**`AutoUpdate/` is human-owned.** Its three files are hand-picked / hand-written for each stable
+release: no build step, script or tool writes them, and they must not be edited by an automated
+pass. `Release/ReadMe.txt` (the release blurb) and every `version.txt` in the tree
+(`AutoUpdate/`, `launcher-xr/`, `Release/`) are human-edited the same way - a version number is a
+release decision, so if a human gets one wrong, a human corrects it.
 
 Public URLs the launcher reads (`raw`, branch `main`):
 
@@ -656,8 +665,8 @@ Public URLs the launcher reads (`raw`, branch `main`):
   https://raw.githubusercontent.com/WinlatorXR/Shogo-VR-WXR/refs/heads/main/AutoUpdate/version.txt
 
 The launcher ships its **own** `version.txt` next to `ShogoVR.exe`
-(`launcher-xr/version.txt`, currently `0.6`) - that is the locally "installed" version it
-compares against.
+(`launcher-xr/version.txt`, hand-edited to the same number - `0.7` for the current release) -
+that is the locally "installed" version it compares against.
 
 `version.txt` is the **release gate**, and it is edited **by hand, for stable, human-approved
 releases only** - nothing bumps it automatically, and no build step reads or writes it.
@@ -693,10 +702,11 @@ normal launch with whatever DLL is currently installed.
 
 ### Status
 
-- **Repository side: done.** `AutoUpdate/CShell.dll` (714240 bytes - the 15 Oct stable
-  build), `AutoUpdate/version.txt` (`0.6`) and `AutoUpdate/notes.txt`
-  ("First version of auto-update") are committed, and the stale `CShell.dll` line was
-  removed from `.gitignore` so the release DLL is tracked (commits `b4fa06a`, `05c9e75`).
+- **Repository side: done.** `AutoUpdate/CShell.dll` (714240 bytes - the stable 15 Oct build,
+  byte-identical to the 0.7 release build), `AutoUpdate/version.txt` (hand-bumped to `0.7`) and
+  `AutoUpdate/notes.txt` are in place, and the stale `CShell.dll` line was
+  removed from `.gitignore` so the release DLL is tracked (commits `b4fa06a`, `05c9e75`). Until
+  the `0.7` bump is committed and pushed, the copy the updater reads on `main` is still `0.6`.
 - **Launcher side: done (17 Oct).** `launcher-xr/ShogoVR.cpp` runs `TryUpdate()` before the
   game starts: a WinHTTP `GET` of `version.txt` + `notes.txt` (5 s resolve/connect and
   15/20 s send/receive timeouts, and *no* proxy lookup, so an offline headset fails fast
@@ -711,8 +721,30 @@ normal launch with whatever DLL is currently installed.
   `version.txt` URL (HTTP 404 -> skipped, no prompt, the other URLs are never fetched, ~0.4 s);
   a faulty `CShell.dll` URL after a good prompt (nothing installed, staged file kept); the
   retry after that failure (installs); and a failed `CShell.dll` copy (old `version.txt`
-  restored, staged files kept). Still to try on device.
+  restored, staged files kept). The copy-failure branch is easy to hit: **install assumes
+  `<game>\ShogoVR\` already exists** (it is part of every release package), so if the folder is
+  missing the DLL copy fails - the rollback then restores/removes the local `version.txt`, keeps
+  the staged files and re-offers the update next launch (i.e. it fails safe, never half-installed).
+- **Re-checked against the deployed 0.7 bytes (17 Oct).** The rebuilt `ShogoVR.exe` was driven a
+  second time in a throwaway folder: the un-answered prompt **blocks indefinitely** (no update is
+  ever installed without an explicit YES); **NO** launches `Client.exe` with the game folder as the
+  working directory and the expected command line, and the launcher waits for it; **YES** downloads
+  and installs `version.txt` plus a `ShogoVR\CShell.dll` that is **byte-identical** to
+  `AutoUpdate/CShell.dll` (SHA256 `5EE4A7C4...`, 714240 bytes), then empties `ShogoVRUpdate`.
+- **Still to try on device:** the updater's HTTPS under Wine/WinlatorXR (a desktop pass cannot
+  prove the container's WinHTTP path).
 - **Release step (each stable release, by hand):** rebuild `CShell.dll`, copy it to
   `AutoUpdate/CShell.dll`, rewrite `AutoUpdate/notes.txt`, then bump `AutoUpdate/version.txt`
-  **and** `launcher-xr/version.txt` to the same new number. The version bump is what actually
-  publishes the release - a new DLL with an unchanged `version.txt` reaches nobody.
+  **and** `launcher-xr/version.txt` to the same new number, and **commit + push** - the version
+  bump is what actually publishes the release, and nothing reaches users until it is on `main`.
+- **Deploying a release (by hand):** put the rebuilt **`ShogoVR.exe`** and the **`ShogoVR`
+  sub-folder** (`CShell.dll`, plus `AUTHORS.txt` / `NOTICE.txt` in the packaged release) into
+  exactly two places - the GOG Shogo directory (`E:\GOG Galaxy\Games\Shogo - Mobile Armor
+  Division\`) and the git release directory (`Release/`) - and nowhere else. `Release/` also holds
+  the human-written `ReadMe.txt`, the human-edited `version.txt` and past packaged zips under
+  `Release/Releases/`; those are not touched by a deploy.
+- **Staged for the 0.7 release (17 Oct):** `CShell.dll` rebuilt and confirmed **byte-identical** to
+  the device-verified / hand-picked DLL (`5EE4A7C4...`), `ShogoVR.exe` rebuilt, and both copied into
+  the GOG folder and `Release/` (`Release/ShogoVR.exe` and the GOG copy are the same bytes as
+  `launcher-xr/ShogoVR.exe`). Every tracked device bug (#20, #22, #37, #38, #39) was cleared in the
+  same 17 Oct headset pass, so this build is the first with **no open issues**.

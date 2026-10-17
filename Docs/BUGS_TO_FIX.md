@@ -17,13 +17,14 @@ flashes), **#30** (VR menu trimmed), **#21** (the VR body no longer shows in
 third-person / cutscene / death views - user-confirmed), **#34** (the gun no longer sits below the
 shot origin), **#35** (dominant hand - user-confirmed), **#36** (Right B transform), **#22** (the single
 15% move dead zone - "confirmed for now", 2026-10-17) and **#38** (the Options menu no longer shows
-the Keyboard / Mouse / Joystick pages - user-confirmed, 2026-10-17). #4 and #9
-were verified with the WinlatorXR XrApi UDP Tester rather than in the headset. **Removed /
-cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded into #19), #24/#25/#33 (the
-autosave family - players can save/load manually if they hit an issue instead) and #32 (jump -
-appears fixed on device). **Fixed in code, awaiting a device pass:** #20 (crouch lowers the eyes
-**and** the held gun), #37 (right-stick up/down weapon-swap dead zone) and #39 (Quit exits
-immediately, skipping the confirm box).
+the Keyboard / Mouse / Joystick pages - user-confirmed, 2026-10-17), **#20** (crouch lowers the eyes
+**and** the held gun - user-confirmed, 2026-10-17), **#37** (the right-stick up/down weapon-swap dead
+zone - user-confirmed, 2026-10-17) and **#39** (Quit exits immediately, skipping the confirm box -
+user-confirmed, 2026-10-17). #4 and #9 were verified with the WinlatorXR XrApi UDP Tester rather than
+in the headset. **Removed / cancelled:** #7 (supersampling not pursued), #18 (zoom re-select, folded
+into #19), #24/#25/#33 (the autosave family - players can save/load manually if they hit an issue
+instead) and #32 (jump - appears fixed on device). **No item is left awaiting a device pass: every
+tracked issue is now either verified, removed or cancelled.**
 
 | #  | Issue | Status |
 |----|-------|--------|
@@ -46,7 +47,7 @@ immediately, skipping the confirm box).
 | 17 | Face buttons leak X/Y/B/A | Fixed - verified (A/B leak: #31) |
 | 18 | Weapon zoom re-select | Removed - superseded by #19 |
 | 19 | Zoom shrinks view (blocker) | Fixed - verified (2026-10-14; zoom removed) |
-| 20 | Crouch doesn't lower the VR camera | Fixed in code (2026-10-14) - eyes + gun lower; needs a device pass |
+| 20 | Crouch doesn't lower the VR camera | Fixed - verified (2026-10-17, user-confirmed) - eyes + gun lower |
 | 21 | Body shown in 3rd-person / cutscenes | Fixed - verified (2026-10-14, user-confirmed) |
 | 22 | Left-stick deadzone | Fixed - verified (2026-10-17, user-confirmed "confirmed for now") - single 15% dead zone (both axes); tunable (see below) |
 | 23 | Right A/B intermittent/swapped | Fixed - verified (2026-10-14) |
@@ -63,23 +64,27 @@ immediately, skipping the confirm box).
 | 34 | Weapon model lower than shot origin | Fixed - verified (2026-10-14) |
 | 35 | Left/right dominant hand does nothing | Fixed - verified (2026-10-14, user-confirmed) |
 | 36 | Right B (transform) needs repeated taps | Fixed - verified (2026-10-14) |
-| 37 | Right-stick up/down swaps weapons too easily | Fixed in code (2026-10-14) - now tunable (see below); needs a device pass |
+| 37 | Right-stick up/down swaps weapons too easily | Fixed - verified (2026-10-17, user-confirmed) - now tunable (see below) |
 | 38 | Keyboard / Mouse / Joystick pages in Options | Fixed - verified (2026-10-17, user-confirmed) - hidden from the menu |
-| 39 | Quit confirmation dead-ends in VR | Fixed in code (2026-10-15) - Quit exits immediately (no box); needs a device pass |
+| 39 | Quit confirmation dead-ends in VR | Fixed - verified (2026-10-17, user-confirmed) - Quit exits immediately (no box) |
 
 ## Open items (as of 2026-10-17)
 
-No tracked bug is still **open**: everything is either fixed/verified or fixed in code awaiting a
-device pass, and a few items were removed/cancelled. #22 (the single 15% move dead zone) and #38 (the
-Options pages) were **verified on device (2026-10-17)**; #39 (Quit exits immediately) is the last one
-awaiting a headset pass.
+No tracked bug is still **open**, and none is awaiting a device pass: everything is either
+fixed/verified, removed or cancelled. #20 (crouch lowers the eyes **and** the gun), #22 (the single
+15% move dead zone), #37 (the right-stick weapon-swap dead zone), #38 (the Options pages) and #39
+(Quit exits immediately) were all **verified on device (2026-10-17)**.
 
-**Fixed in code, awaiting a device pass:**
+**Verified on device (2026-10-17):**
 
-- **#20 - Crouch doesn't lower the VR camera**. The eyes **and the held gun** now drop while the
-  crouch controls are on (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
-- **#37 - right-stick up/down weapon swap** now needs a deliberate push (engage 0.80, re-arm 0.45).
+- **#20 - Crouch doesn't lower the VR camera**. The eyes **and the held gun** drop while the crouch
+  controls are on (eased), using a new `VRCrouchDrop` amount (default 0.6 m).
+- **#22 - left-stick move dead zone**: one console var `VRMoveDeadZone` (default 0.15, clamp
+  0..0.95) applies to both axes; `VRMoveDeadZoneX`/`VRMoveDeadZoneY` are gone.
+- **#37 - right-stick up/down weapon swap** now needs a deliberate push (engage 0.80, reset 0.45).
   The press threshold is the live setting `VRWeaponSwapDead` (config + VR screen).
+- **#38 - the Keyboard / Mouse / Joystick pages** are hidden from the Options menu (still
+  initialised, just unreachable).
 - **#39 - selecting Quit exits immediately**: the "are you sure?" box is skipped entirely (its Y key
   is a dead end in VR, where the controllers have no convenient Y).
 
@@ -766,8 +771,8 @@ awaiting a headset pass.
 
 ## 20. Crouch doesn't lower the VR camera (Left X toggle, Left stick click hold)
 
-- **Status:** Fixed in code (2026-10-14) - awaiting device verification (crouch drops the eyes **and**
-  the held gun).
+- **Status:** Fixed - **verified on device (2026-10-17, user-confirmed)** (crouch drops the eyes
+  **and** the held gun).
 - **Priority:** Medium (dead inputs; may matter on later levels / low gaps)
 - **Observed (device, 2026-10-12):** Left X (crouch toggle) and Left stick click (crouch hold)
   give no visible crouch.
@@ -807,7 +812,8 @@ awaiting a headset pass.
   (`m_fCrouchAmt * VRCrouchDrop`, along the body up axis) from the hand position. That one place
   feeds the held gun (`UpdateHeldGun`), the muzzle flash (`GetMuzzleFlashWorld`), the aim ray
   (`UpdateAimMarker`) and the hidden first-person model that still fires the shots
-  (`AdjustWeaponPose`), so the whole view now drops together with the eyes. Needs a device pass.
+  (`AdjustWeaponPose`), so the whole view now drops together with the eyes. **Verified on device
+  (2026-10-17):** the eyes and the held gun drop together while crouched.
 - **Refs:** `game/XrApiUDP.cpp:435-436`; `game/VRStereo.cpp:2131-2141`
   (`VRCommandOn`/`COMMAND_ID_DUCK`), `game/VRStereo.h:373` (`m_bCrouchOn`);
   `ShogoSource/ClientShellDLL/CMoveMgr.cpp:178-181, 725-728, 835-838`;
@@ -875,7 +881,7 @@ awaiting a headset pass.
   = 15%) now applies the same threshold to both axes. The per-axis `VRMoveDeadZoneX`/`VRMoveDeadZoneY`
   settings and their two VR rows were removed (the VR page is back to 9 rows); the per-axis
   application is kept, so a mostly-forward push still cannot drift sideways. Build clean (714240
-  bytes), deployed; needs a device pass.
+  bytes), deployed.
 - **Verified on device (2026-10-17, user-confirmed):** the owner confirms the single 15% move dead
   zone; no unintended diagonal drift, deliberate diagonals still register.
 - **Refs:** `game/VRStereo.cpp:2260-2286` (`GetMoveAxes`), `:2230-2241` (`VRCommandOn` movement),
@@ -1348,7 +1354,8 @@ awaiting a headset pass.
 
 ## 37. Right-stick up/down changes weapon too easily (accidental swaps)
 
-- **Status:** Fixed in code (2026-10-14) - needs a device pass.
+- **Status:** Fixed - **verified on device (2026-10-17, user-confirmed)** - a light nudge no longer
+  cycles weapons.
 - **Priority:** Medium (weapons change by accident while turning / moving)
 - **Observed (device, 2026-10-14):** weapon swapping on the right stick's up/down axis fires too
   easily - a light nudge (or drift) cycles weapons, so it does not feel intentional.
@@ -1362,6 +1369,8 @@ awaiting a headset pass.
   `VRWeaponSwapDead` (default 0.80, clamped to `0..1`); the reset stays 0.35 below it. Added as the
   "weapon swap dead zone" row on the VR screen (Options > vr settings). Build clean (715264 bytes),
   deployed.
+- **Verified on device (2026-10-17, user-confirmed):** a deliberate push swaps weapons; a light
+  up/down nudge or drift no longer does.
 - **Refs:** `game/VRStereo.cpp` `PollWeaponCycle`, `StickTurn`; #15, #22.
 
 ---
@@ -1379,7 +1388,7 @@ awaiting a headset pass.
   four. The sub-menu objects and their `Init`/`ScreenDimsChanged` calls are left in place (no longer
   reachable). This is a ShogoSource edit, so it is documented in
   `ShogoSourceModifications/ClientShellDLL/OptionsMenu.cpp.md` (section 6). Build clean (714240
-  bytes), deployed; needs a device pass.
+  bytes), deployed.
 - **Verified on device (2026-10-17, user-confirmed):** Options now shows only Screen, Sound, vr and
   Back - the Keyboard, Mouse and Joystick pages are not reachable.
 - **Refs:** `ShogoSource/ClientShellDLL/OptionsMenu.cpp` `Return` / `LoadSurfaces` / `UnloadSurfaces`.
@@ -1388,7 +1397,7 @@ awaiting a headset pass.
 
 ## 39. Selecting "Quit" should exit immediately (QoL)
 
-- **Status:** Fixed in code (2026-10-15) - needs a device pass.
+- **Status:** Fixed - **verified on device (2026-10-17, user-confirmed)** - Quit exits immediately.
 - **Priority:** Low (the quit flow dead-ends in VR)
 - **Requested (2026-10-15):** clicking the **Quit** (Exit) menu option should quit right away in VR
   (originally "automatically submit the Y key"; the owner then asked to **skip the box and quit
@@ -1400,8 +1409,9 @@ awaiting a headset pass.
   yes-branch the box would have run - so the confirmation box is never created and Quit is a single
   action. (A first cut kept the box and had the mod tap Y via a new `CVRStereo::InjectKeyTap`; that
   helper was removed when the box was dropped.) This is a ShogoSource edit, so it is documented in
-  `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean (714240 bytes), deployed;
-  needs a device pass.
+  `ShogoSourceModifications/ClientShellDLL/MainMenu.cpp.md`. Build clean (714240 bytes), deployed.
+- **Verified on device (2026-10-17, user-confirmed):** selecting Quit leaves the game at once, with no
+  confirmation box and no dead end.
 - **Refs:** `ShogoSource/ClientShellDLL/MainMenu.cpp` `Return` / `ExitGame`;
   `ShogoSource/ClientShellDLL/RiotClientShell.cpp` `ExitGame` / `DoYesNoMessageBox`; same class as
   #16 (the game's own prompt does not accept the controller).
