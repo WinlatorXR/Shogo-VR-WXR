@@ -669,6 +669,9 @@ compares against.
 3. If the versions **differ**, a simple **YES/NO message box** appears - every time it
    detects the different version - reading roughly:
    `A new update is available, download now? Version [version_number]: [notes]`
+   The compare is a plain inequality, not "is the online one newer": a local build with a
+   *higher* number (someone playtesting a prerelease) is prompted too, and answering Yes
+   installs the published build. That is intended.
 4. **NO** - launch the game as normal.
 5. **YES** - create (or empty the contents of) a temporary folder `ShogoVRUpdate` (next to
    the EXE) and download `version.txt` and `CShell.dll` into it.
