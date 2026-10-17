@@ -620,12 +620,12 @@ The immediate next actions are:
    each fix's device-verification status and drop the matching prose note under
    `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource
    change.
-6. **Auto-update (new - see section 7).** The latest stable build, its version number and a
-   short changelog live in `AutoUpdate/` (`CShell.dll`, `version.txt`, `notes.txt`). The
-   `ShogoVR.exe` launcher (`launcher-xr/`) should read the online `version.txt`, prompt
-   **YES/NO** when it differs from the local copy, and on YES download `version.txt` +
-   `CShell.dll` into `ShogoVRUpdate` then overwrite the installed copies. The repo side is
-   done; the launcher logic is still to implement.
+6. **Auto-update (new - see section 7).** Done on both sides: the latest stable build, its
+   version number and a short changelog live in `AutoUpdate/` (`CShell.dll`, `version.txt`,
+   `notes.txt`), and `ShogoVR.exe` (`launcher-xr/`) now reads the online `version.txt`,
+   prompts **YES/NO** when it differs from the local copy, and on YES stages `version.txt` +
+   `CShell.dll` in `ShogoVRUpdate` before installing them. Verified on the desktop; still to
+   be tried inside the container.
 
 ---
 
@@ -687,10 +687,21 @@ normal launch with whatever DLL is currently installed.
   build), `AutoUpdate/version.txt` (`0.6`) and `AutoUpdate/notes.txt`
   ("First version of auto-update") are committed, and the stale `CShell.dll` line was
   removed from `.gitignore` so the release DLL is tracked (commits `b4fa06a`, `05c9e75`).
-- **Launcher side: to implement** in `launcher-xr/ShogoVR.cpp` (Win32/Wine, no window):
-  a small HTTPS GET (`winhttp` / WinINet), `MessageBoxW(..., MB_YESNO)`,
-  `CreateDirectoryW` / `FindFirstFileW` (empty `ShogoVRUpdate`), `CopyFileW`. Rebuild with
-  `launcher-xr/build.cmd`.
+- **Launcher side: done (17 Oct).** `launcher-xr/ShogoVR.cpp` runs `TryUpdate()` before the
+  game starts: a WinHTTP `GET` of `version.txt` + `notes.txt` (5 s resolve/connect and
+  15/20 s send/receive timeouts, and *no* proxy lookup, so an offline headset fails fast
+  instead of stalling), `MessageBoxW(MB_YESNO)` for the prompt, the `ShogoVRUpdate` staging
+  folder and `CopyFileW` for the install. Every run appends to
+  `ShogoVR_update.log` next to the EXE. (The updater links `winhttp.lib` via a
+  `#pragma comment` in the source, so `launcher-xr/build.cmd` is unchanged.)
+- **Verified on the desktop (17 Oct).** Every branch was exercised against the live release
+  URL with the prompt answered through `WM_COMMAND`: up-to-date (no prompt); missing local
+  `version.txt` with both **NO** (nothing touched) and **YES** (installs); the launcher
+  sitting *inside* the `ShogoVR` overlay (installs into that folder); a faulty
+  `version.txt` URL (HTTP 404 -> skipped, no prompt, the other URLs are never fetched, ~0.4 s);
+  a faulty `CShell.dll` URL after a good prompt (nothing installed, staged file kept); the
+  retry after that failure (installs); and a failed `CShell.dll` copy (old `version.txt`
+  restored, staged files kept). Still to try on device.
 - **Release step (each stable release):** rebuild `CShell.dll`, copy it to
   `AutoUpdate/CShell.dll`, bump `AutoUpdate/version.txt` **and** `launcher-xr/version.txt` to
   the same number, and rewrite `AutoUpdate/notes.txt`.

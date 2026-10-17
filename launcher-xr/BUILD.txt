@@ -19,3 +19,29 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   Deploy: copy ShogoVR.exe alongside Client.exe in the WinlatorXR container
   and start it from there.  Its icon comes from assets/shogo.ico (the icon of
   Shogo.exe).
+
+  Auto-update:  before launching, ShogoVR.exe reads the release channel
+  (see Docs/PROJECT_PLAN.md section 7) - version.txt and notes.txt from
+  https://raw.githubusercontent.com/WinlatorXR/Shogo-VR-WXR/refs/heads/main/AutoUpdate/
+  - and compares the version with the version.txt sitting next to the EXE.
+  If they differ (or the local file is missing) it shows a YES/NO box:
+
+    A new update is available, download now?
+    Version <version>: <notes>
+
+  YES downloads version.txt and
+  https://github.com/WinlatorXR/Shogo-VR-WXR/raw/refs/heads/main/AutoUpdate/CShell.dll
+  into a ShogoVRUpdate folder next to the EXE, then - only once both downloads
+  are complete - copies version.txt next to the EXE and CShell.dll into the
+  ShogoVR folder next to Client.exe, and empties ShogoVRUpdate (keeping the
+  folder).  NO, no internet, or any download/copy failure just launches the game
+  with what is already installed (a failed CShell.dll copy restores the old
+  version.txt so the update is offered again next time).  What happened lands in
+  ShogoVR_update.log next to the EXE.
+
+  The updater links winhttp.lib; the source carries
+  #pragma comment(lib, "winhttp.lib"), so the link lines above need no change.
+
+  Release step:  put the new CShell.dll in AutoUpdate/, bump
+  AutoUpdate/version.txt AND launcher-xr/version.txt to the same number, and
+  rewrite AutoUpdate/notes.txt.
