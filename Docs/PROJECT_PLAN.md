@@ -627,12 +627,12 @@ The immediate next actions are:
    version number and a short changelog live in `AutoUpdate/` (`CShell.dll`, `version.txt`,
    `notes.txt`), and `ShogoVR.exe` (`launcher-xr/`) now reads the online `version.txt`,
    prompts **YES/NO** when it differs from the local copy, and on YES stages `version.txt` +
-   `CShell.dll` in `ShogoVRUpdate` before installing them. **The 0.7 release is prepared and
-   staged** (see section 7): the rebuilt `ShogoVR.exe` and the byte-identical `CShell.dll` are
-   deployed to the GOG game folder and to `Release/`, and the launcher's update / no-answer /
-   YES-install / NO-launch paths were re-checked against the deployed bytes. Publishing the
-   release (pushing `AutoUpdate/version.txt` so the updater offers it) is the owner's step;
-   running the updater inside the container under Wine/WinlatorXR is still untested.
+   `CShell.dll` in `ShogoVRUpdate` before installing them. **The 0.7 release is published**
+   (19 Oct 2026 - `AutoUpdate/version.txt` and `launcher-xr/version.txt` were bumped to `0.7` and
+   pushed, so the updater offers it): the rebuilt `ShogoVR.exe` and the byte-identical `CShell.dll`
+   are deployed to the GOG game folder and to `Release/`, and the launcher's update / no-answer /
+   YES-install / NO-launch paths were re-checked against the deployed bytes. Running the updater
+   itself inside the container under Wine/WinlatorXR is still untested on device.
 
 **0.8 cycle opened (19 Oct 2026).** With 0.7 published, the owner returned with the first four items
 for 0.8: continued-fire haptics (**#40**), the dual-pistol muzzle-flash position (**#41**), the
