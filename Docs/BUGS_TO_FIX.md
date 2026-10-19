@@ -101,30 +101,28 @@ confirmed on the next device pass.
 - **Priority:** Low (a missing sound; movement still works)
 - **Observed (device):** the right grip is the "double jump", which only the MCA can do. On foot,
   pressing it gives a jump but **no jump sound**; the left grip's normal jump does play the sound.
-  The owner's suggested fix: while on foot, make **both grips the same jump**.
-- **Where it comes from:** the right grip is mapped to `SHOGOVR_BTN_DOUBLEJUMP`
-  (`game/XrApiUDP.cpp:430`, bool index 12) and the left grip to `SHOGOVR_BTN_JUMP` (`:431`, index 0);
-  `game/ShogoVRShared.h:37,45` names the bits. The mod reports them as separate commands -
-  `game/VRStereo.cpp:2252-2253`: `COMMAND_ID_JUMP` is on for either grip, `COMMAND_ID_DOUBLEJUMP`
-  only for the right. The shell then **downgrades** a double jump to a plain jump on foot -
-  `ShogoSource/ClientShellDLL/CMoveMgr.cpp:192-203` sets `BC_CFLG_JUMP` when on foot, and sets
-  `BC_CFLG_DOUBLEJUMP` only in MCA mode - and the on-foot jump sound is played from the shared
-  `BC_CFLG_JUMP || BC_CFLG_DOUBLEJUMP` test (`ShogoSource/ObjectDLL/BaseCharacter.cpp:2426-2457`).
-  On that reading the two grips *should* already behave the same, so **the exact reason the sound is
-  skipped is unconfirmed** - the first thing to check on the next device pass is whether the right
-  grip jumps *without* a sound, or does not jump at all.
-- **Fix direction:** do what the owner suggested - while **not** in MCA / vehicle mode, treat both
-  grips as the same plain jump. The mod already knows the mode (`m_bMech`, set by `SetMechMode` -
-  `game/VRStereo.cpp:3367-3373`, `game/VRStereo.h:450` - from the shell at
-  `ShogoSource/ClientShellDLL/RiotClientShell.cpp:5485`), so `VRCommandOn(COMMAND_ID_DOUBLEJUMP)`
-  can return `DFALSE` while on foot, folding the right grip into `COMMAND_ID_JUMP` (which already
-  covers both bits at `:2252`). Keep the separate double jump in MCA mode. If the sound is still
-  missing once the behaviours are identical, it becomes a separate engine-side question.
+  The owner's suggested fix - make both grips the same jump while on foot - becomes the decision below.
+- **Cause (confirmed by the owner, 2026-10-19):** the double jump is a **separate in-game control**,
+  and the developers chose that for a **human character** it still performs an ordinary jump but
+  deliberately **makes no jump sound** - the sound belongs to the normal jump path. So the right grip
+  is faithfully asking for the double-jump control and getting exactly what the game does with it on
+  foot: the silence is by design, not a mod or mapping fault. (Mechanically the mod keeps the two
+  controls apart - `COMMAND_ID_JUMP` for either grip, `COMMAND_ID_DOUBLEJUMP` for the right only
+  (`game/VRStereo.cpp:2252-2253`) - and the shell already downgrades a double jump to `BC_CFLG_JUMP`
+  on foot (`ShogoSource/ClientShellDLL/CMoveMgr.cpp:192-203`), which is why the jump itself works.)
+- **Decision / fix direction (owner's call):** fix it **mod-side, not in the game's core code** -
+  while on foot, make the **right grip also send the regular "jump" input**, so both grips behave
+  identically and the jump sound plays. The mod already knows the mode (`m_bMech`, set by
+  `SetMechMode` - `game/VRStereo.cpp:3367-3373`, `game/VRStereo.h:450` - from the shell at
+  `ShogoSource/ClientShellDLL/RiotClientShell.cpp:5485`), so `VRCommandOn(COMMAND_ID_DOUBLEJUMP)` can
+  return `DFALSE` while on foot, folding the right grip into `COMMAND_ID_JUMP` (which already covers
+  both bits at `:2252`). Keep the separate double jump in MCA mode. Because this stays in `game/`,
+  it needs **no** `ShogoSourceModifications/` note.
 - **Refs:** `game/XrApiUDP.cpp:424-441` (`ButtonBits`), `game/ShogoVRShared.h:37,45`,
   `game/VRStereo.cpp:2244-2254` (`VRCommandOn`), `:3367-3373` (`SetMechMode`);
-  `ShogoSource/ClientShellDLL/CMoveMgr.cpp:183-204`, `ShogoSource/ObjectDLL/BaseCharacter.cpp:2418-2465`,
-  `ShogoSource/ClientShellDLL/RiotClientShell.cpp:5485`; archived: #15 (controller mapping), #32
-  (jump stopped working).
+  `ShogoSource/ClientShellDLL/CMoveMgr.cpp:183-204` (the engine-side downgrade - background for the
+  explanation, not part of the fix), `ShogoSource/ClientShellDLL/RiotClientShell.cpp:5485`;
+  archived: #15 (controller mapping), #32 (jump stopped working).
 
 ---
 
@@ -160,6 +158,10 @@ confirmed on the next device pass.
   the arming inside the mod) on the load not being a restore. Confirm the death quick-load itself
   reads as a restore (it should - it goes through `LoadGame`/`DoLoadWorld`). These are ShogoSource-side
   changes (and/or the mod's arming rule), so they need `ShogoSourceModifications/` notes.
+- **Process (confirmed by the owner, 2026-10-19):** editing ShogoSource here is expected and fine -
+  the standing rule is simply that every ShogoSource change comes with its `ShogoSourceModifications/`
+  prose note and a `PROJECT_PLAN.md` entry, and that rule is followed. It is not a reason to avoid the
+  change, and it does not change the fix direction above.
 - **Refs:** `game/VRStereo.cpp:3546-3563` (arm + fire), `:3575-3577` (left trigger while dead ->
   `COMMAND_ID_QUICKLOAD`), `game/VRStereo.h:150,412`;
   `ShogoSource/ClientShellDLL/RiotClientShell.cpp:2644-2652` (`SetLevelLoaded` call), `:4831-4844`
@@ -177,8 +179,9 @@ confirmed on the next device pass.
 - **Input path (this list: #40, #42, #43):** anything driven from the pad starts in
   `game/XrApiUDP.cpp` (`ButtonBits()` maps the runtime's bool indices to `SHOGOVR_BTN_*`) and is
   read through `CVRStereo::VRCommandOn()` / the edge sets in `UpdateInput()`. Reconcile each bool
-  index against the on-device bool string before trusting a mapping - #42 is a case where the
-  reported behaviour and the engine code do not obviously agree.
+  index against the on-device bool string before trusting a mapping. #42 turned out **not** to be a
+  mapping fault - the game's double-jump control simply makes no sound for a human character, so the
+  fix is a deliberate mod-side remap while on foot (see #42).
 - **Weapon effects (this list: #41):** the mod hides the game's real first-person weapon model and
   draws its own at the hand pose, so anything the engine anchors to the hidden model (the muzzle
   flash) has to be re-placed by `CVRStereo::GetMuzzleFlashWorld()`. That helper applies the engine's
