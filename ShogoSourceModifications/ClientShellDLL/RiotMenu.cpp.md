@@ -74,4 +74,4 @@ call) unchanged - they now use the virtual size automatically.
   `g_VRStereo.Init()` (so the `VRMenuLayout` VarTrack is not ready yet). The
   shell re-runs this `ScreenDimsChanged()` once VR becomes available - see
   `RiotClientShell.cpp.md`, edit 7.
-- See `Docs/BUGS_TO_FIX.md` #5.
+- See `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #5.

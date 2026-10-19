@@ -342,7 +342,8 @@ STATUS (device run, 10-14 Oct 2026): the port **has run on the target** - Meta
 Quest 3 via WinlatorXR, launched from the custom `ShogoVR.exe` (launcher-xr), with
 the game at **2800x1400 SBS** (1400/eye). The on-device sessions exposed a set of
 comfort / render / input issues; those are logged, root-caused and almost all fixed
-in `Docs/BUGS_TO_FIX.md` (#1-#39). As of the 14 Oct 2026 headset pass the list is
+in `Docs/PreReleaseBugs/BUGS_TO_FIX.md` (#1-#39; archived 19 Oct 2026 when the 0.8 tracker took over
+at `Docs/BUGS_TO_FIX.md`). As of the 14 Oct 2026 headset pass the list was
 nearly closed - the original 10-11 Oct batch (head roll #1, hand roll #2/#8, the
 controller input path #3, fire #4, menu sizing/centring #5/#6, the stale-data hang
 #9, the stereo splash/movies #10, left-stick movement #11, render resolution #13,
@@ -361,8 +362,9 @@ hidden from Options) and #39 (Quit exits immediately) are all **fixed and verifi
 (loading/bumper/credits) and #26 (intro-video y-offset + 50 px) are **fixed and verified
 on device (14 Oct)**.
 On-device logs land in `<game>\ShogoVR\ShogoVR_game.log`; `#4` (fire) and `#9`
-(sync hold) were verified on the desktop with the XrApi UDP Tester. **The live
-issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
+(sync hold) were verified on the desktop with the XrApi UDP Tester. **For that work the live
+issue tracker was `Docs/PreReleaseBugs/BUGS_TO_FIX.md` (#1-#39), not the phase statuses below;
+the current 0.8 tracker is `Docs/BUGS_TO_FIX.md`.**
 
 ---
 
@@ -385,8 +387,9 @@ issue tracker is now `Docs/BUGS_TO_FIX.md`, not the phase statuses below.**
 Progress: **Phases 0-5 are code-complete and the port has run on the target**
 (Meta Quest 3 via WinlatorXR, launched from `ShogoVR.exe`, 2800x1400 SBS). The
 10-13 Oct 2026 on-device sessions produced a set of comfort / render / input bugs
-that are now the **live issue log in `Docs/BUGS_TO_FIX.md` (#1-#39)** - that file,
-not the phase statuses above, is the current source of truth. As of the 17 Oct
+that are now the **live issue log in `Docs/PreReleaseBugs/BUGS_TO_FIX.md` (#1-#39)** - that file,
+not the phase statuses above, was the source of truth for the pre-release work (the 0.8 cycle opened a
+fresh `Docs/BUGS_TO_FIX.md` on 19 Oct 2026). As of the 17 Oct
 2026 pass **no bug is open and none is awaiting a device pass**: #20 (crouch lowers the eyes **and
 the held gun**), #22 (the single 15% left-stick move dead zone), #37 (right-stick weapon-swap dead
 zone), #38 (the Keyboard / Mouse / Joystick pages are hidden from Options) and #39 (Quit exits
@@ -437,8 +440,8 @@ The 11 Oct 2026 session added six more in-code fixes (all since verified on devi
 This brings the tracked ShogoSource notes to **eight** files
 (`ShogoSourceModifications/` now also documents `PlayerStats.cpp`).
 
-The 12 Oct 2026 session added a fresh device bug list (`Docs/BUGS_TO_FIX.md`,
-now #1-#36) and worked several of them in code; the 13 Oct 2026 headset pass
+The 12 Oct 2026 session added a fresh device bug list (now archived at
+`Docs/PreReleaseBugs/BUGS_TO_FIX.md`, then #1-#36) and worked several of them in code; the 13 Oct 2026 headset pass
 confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out the
 #19 zoom approach, while re-opening the camera half of #20 and #28:
 
@@ -615,10 +618,11 @@ The immediate next actions are:
    on the VR screen and in `ShogoVR.ini`, so they can be tuned in the headset. #12 (loading /
    bumper / **credits** screen per eye) and #26 (intro-video y-offset + 50 px) are **fixed and
    verified on device (14 Oct)**.
-5. **Keep `Docs/BUGS_TO_FIX.md` current** - it is the single live tracker; note
-   each fix's device-verification status and drop the matching prose note under
-   `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any ShogoSource
-   change.
+5. **Keep the live tracker `Docs/BUGS_TO_FIX.md` current** - it now covers the **0.8** cycle
+   (`#40` onward); the pre-release items `#1`-`#39` are archived in
+   `Docs/PreReleaseBugs/BUGS_TO_FIX.md`. Note each fix's device-verification status and drop the
+   matching prose note under `ShogoSourceModifications/` plus a `PROJECT_PLAN.md` entry for any
+   ShogoSource change.
 6. **Auto-update (new - see section 7).** Done on both sides: the latest stable build, its
    version number and a short changelog live in `AutoUpdate/` (`CShell.dll`, `version.txt`,
    `notes.txt`), and `ShogoVR.exe` (`launcher-xr/`) now reads the online `version.txt`,
@@ -629,6 +633,13 @@ The immediate next actions are:
    YES-install / NO-launch paths were re-checked against the deployed bytes. Publishing the
    release (pushing `AutoUpdate/version.txt` so the updater offers it) is the owner's step;
    running the updater inside the container under Wine/WinlatorXR is still untested.
+
+**0.8 cycle opened (19 Oct 2026).** With 0.7 published, the owner returned with the first four items
+for 0.8: continued-fire haptics (**#40**), the dual-pistol muzzle-flash position (**#41**), the
+right-grip jump sound on foot (**#42**) and the level quicksave logic (**#43** - the earlier autosave
+family, archived `#24`/`#25`/`#33`, is picked up again now that the death-recovery save matters). All
+four are **open**; the root cause and a fix direction for each are recorded in
+`Docs/BUGS_TO_FIX.md`, and the pre-release log moved to `Docs/PreReleaseBugs/BUGS_TO_FIX.md`.
 
 ---
 

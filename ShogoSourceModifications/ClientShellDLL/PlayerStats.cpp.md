@@ -75,6 +75,6 @@ existing drawing calls in between unchanged.
   (`game/VRStereo.h`). With the marker set, the VR module's 2D remap uses the
   aim-distance transform and can skip the blit entirely when the "game
   crosshair" setting (`VRGameCrosshair`, default off) is 0 - see
-  `Docs/BUGS_TO_FIX.md` #14.
+  `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #14.
 - No crosshair-drawing code is changed, only bracketed, so behaviour with stereo
   off is identical.
