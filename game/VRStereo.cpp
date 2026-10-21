@@ -162,6 +162,7 @@ CVRStereo::CVRStereo()
 	m_fCrouchAmt			= 0.0f;
 	m_bAutosavePending		= DFALSE;
 	m_nAutosaveFrames		= 0;
+	m_bPlayerJustDied		= DFALSE;
 	m_bHaveBody				= DFALSE;
 	m_fLastOutYaw			= 0.0f;
 	m_bSnapLatched			= DFALSE;
@@ -321,6 +322,29 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtHeldZ.Init			(pClientDE, "VRHeldZ",			NULL, 0.0f);
 	m_vtHeldScale.Init		(pClientDE, "VRHeldScale",		NULL, 1.0f);
 
+	// Muzzle-flash offset for the held gun, in the held model's own frame
+	// (x = right, y = up, z = forward/out along the barrel).  The game places
+	// the flash from its muzzle-offset table, which was measured for the flat
+	// game's gun model - not the mod's held model - so a straight copy lands
+	// off the barrel.  Only the axes the owner wants are exposed:
+	//   VRFlashLower   - how far *below* the barrel the sprite sits (y)
+	//   VRFlashOffset  - how far *out past* the muzzle it sits (z)
+	//   VRMuzzleLateral- the left/right nudge (x) for **single-barrel** weapons
+	//   VRPistolSpread - the **dual pistols'** left/right spread scale (x): the
+	//                    game's per-barrel value is kept (barrel 1 left, barrel
+	//                    2 right - one flash per hand, #41) but scaled about the
+	//                    centre, because on device the two flashes sat a little
+	//                    too far apart.  1 = the game's own spread.
+	// All are live so the feel can be tuned on-device without a rebuild.
+	// On foot these are multiplied by VRGunScale (1.5), so VRFlashOffset=2 moves
+	// the sprite 3.0 model units forward and VRFlashLower=2.4 moves it 3.6 down.
+	// (Device pass 7: the flashes were correct in front of/above the barrels but
+	// ~0.5 ft too far forward and ~3 in too low, so both were trimmed from 3.0 -
+	// forward by more, because its error was about twice the vertical one.)
+	m_vtFlashOffset.Init	(pClientDE, "VRFlashOffset",	NULL, 2.0f);
+	m_vtFlashLower.Init		(pClientDE, "VRFlashLower",		NULL, 2.4f);
+	m_vtMuzzleLateral.Init	(pClientDE, "VRMuzzleLateral",	NULL, 0.0f);
+	m_vtPistolSpread.Init	(pClientDE, "VRPistolSpread",	NULL, 0.63f);
 	m_pClientDE = pClientDE;
 
 	// Window handle for the bridge, so it knows what to capture.
@@ -1921,7 +1945,11 @@ void CVRStereo::UpdateBridge()
 		// Dominant hand (Controls/LeftHanded): the rest of the mod treats the
 		// "right" hand as the gun hand, so in left-handed mode the two poses
 		// trade places and every gun model follows the other controller.  Only
-		// the triggers and grips change action - sticks and buttons stay put.
+		// the two TRIGGERS change action - sticks, buttons and the grips stay
+		// put.  The grips are deliberately NOT swapped: the left grip is always
+		// "jump" and the right grip always "jump + double jump" (see
+		// XrApiUDP.cpp, #42), so a swap here would move the double jump to the
+		// other hand and leave it silent on foot again.
 		if (m_bLeftHanded)
 		{
 			DVector vT;
@@ -1930,12 +1958,9 @@ void CVRStereo::UpdateBridge()
 			VEC_COPY(vT, m_vRightP);	VEC_COPY(m_vRightP, m_vLeftP);	VEC_COPY(m_vLeftP, vT);
 
 			DDWORD n = m_nButtons;
-			m_nButtons = (n & ~(DDWORD)(SHOGOVR_BTN_FIRE | SHOGOVR_BTN_JUMP |
-										SHOGOVR_BTN_DOUBLEJUMP | SHOGOVR_BTN_LEFT_TRIGGER))
+			m_nButtons = (n & ~(DDWORD)(SHOGOVR_BTN_FIRE | SHOGOVR_BTN_LEFT_TRIGGER))
 					   | ((n & SHOGOVR_BTN_FIRE)			? SHOGOVR_BTN_LEFT_TRIGGER : 0)
-					   | ((n & SHOGOVR_BTN_LEFT_TRIGGER)	? SHOGOVR_BTN_FIRE			: 0)
-					   | ((n & SHOGOVR_BTN_JUMP)			? SHOGOVR_BTN_DOUBLEJUMP	: 0)
-					   | ((n & SHOGOVR_BTN_DOUBLEJUMP)		? SHOGOVR_BTN_JUMP			: 0);
+					   | ((n & SHOGOVR_BTN_LEFT_TRIGGER)	? SHOGOVR_BTN_FIRE			: 0);
 		}
 	}
 	else if (!m_bBridgeAlive)
@@ -1948,6 +1973,28 @@ void CVRStereo::UpdateBridge()
 
 	// Button edges for this frame
 	if (!IsControllerActive()) m_nButtons = 0;
+	m_nRawButtons	= m_nButtons;	// the runtime's word, as reported (see GetRawButtons)
+
+	// #42 is fixed at the SOURCE: CXrApiUDP::ButtonBits() sets the jump bit for
+	// the right grip as well as the double-jump bit (`XB(0) | XB(12)`), so the
+	// right grip genuinely looks like a jump to everything downstream - which is
+	// what plays the sound on foot - while the double-jump bit stays for the MCA.
+	// See game/XrApiUDP.cpp.  (A second, later OR of the same bit used to sit
+	// here; it was redundant with that source-level fix and has been removed so
+	// the intent lives in exactly one place.)
+
+	// Log the jump grips on their press edges (#42).  One line per grip press,
+	// so a device log shows at a glance whether the right grip really produces
+	// BOTH bits - and, with the build stamp at the top of the log, which DLL
+	// produced it.  Cheap: it only fires when a grip goes down.
+	{
+		DDWORD nNewGrip = m_nButtons & ~m_nPrevButtons;
+		if (nNewGrip & (SHOGOVR_BTN_JUMP | SHOGOVR_BTN_DOUBLEJUMP))
+			Log("VR: grip jump - bits after mapping JUMP=%d DOUBLEJUMP=%d (right grip gives both)",
+				(m_nButtons & SHOGOVR_BTN_JUMP) ? 1 : 0,
+				(m_nButtons & SHOGOVR_BTN_DOUBLEJUMP) ? 1 : 0);
+	}
+
 	m_nPressed		= m_nButtons & ~m_nPrevButtons;
 	m_nReleased		= m_nPrevButtons & ~m_nButtons;
 	m_nPrevButtons	= m_nButtons;
@@ -1986,20 +2033,15 @@ void CVRStereo::UpdateBridge()
 		m_nLoggedClientW = m_nClientW; m_nLoggedClientH = m_nClientH;
 	}
 
-	// Controller haptics: a short vibration pulse on the fire edge (and a tiny
-	// one when switching weapons).  The runtime expects a duration in frames,
-	// so we send a small countdown and let it fall back to zero.
+	// Controller haptics (#40): one pulse per *shot*, not per frame the trigger
+	// is held.  ShotFired() (called from CWeaponModel::Fire, where the ammo is
+	// actually spent) puts a frame or two of vibration on the gun hand.  Tying
+	// it to the shot rather than the trigger means a slow weapon, a shotgun or
+	// a charged shot buzzes once for the shot instead of shaking continuously,
+	// and a weapon switch or an empty clip produces nothing at all - the
+	// weapon-change pulse that used to live here is deliberately gone.
 	if (m_fHapticL > 0.0f) m_fHapticL -= 1.0f;
 	if (m_fHapticR > 0.0f) m_fHapticR -= 1.0f;
-	if (m_vtHaptics.GetFloat(1.0f) != 0.0f)
-	{
-		if (m_nPressed & SHOGOVR_BTN_FIRE)
-		{
-			if (m_bLeftHanded)	m_fHapticL = 4.0f;		// the left trigger is the gun trigger
-			else				m_fHapticR = 4.0f;
-		}
-		if (m_nPressed & SHOGOVR_BTN_NEXT_WEAPON)	m_fHapticR = 2.0f;
-	}
 	if (m_fHapticL < 0.0f) m_fHapticL = 0.0f;
 	if (m_fHapticR < 0.0f) m_fHapticR = 0.0f;
 
@@ -2241,6 +2283,21 @@ void CVRStereo::Hook_GetAxisOffsets(DFLOAT *offsets)
 	if (s.m_pfnGetAxisOffsets) s.m_pfnGetAxisOffsets(offsets);
 }
 
+void CVRStereo::ShotFired()
+{
+	// A shot was actually fired (an ammo-consuming shot, or a dry click): buzz
+	// the gun hand.  Called once per shot by CWeaponModel::Fire, which is the
+	// one place that decrements the ammo count, so this cannot fire on a
+	// weapon switch or on an idle frame.  The value is deliberately low - 2
+	// frames is felt as a short kick - and it is scaled by the Haptics setting
+	// (0 disables the feature entirely, as before).
+	if (!IsControllerActive()) return;
+	if (m_vtHaptics.GetFloat(1.0f) == 0.0f) return;
+
+	if (m_bLeftHanded)	m_fHapticL = 2.0f;		// the left trigger is the gun trigger
+	else				m_fHapticR = 2.0f;
+}
+
 DBOOL CVRStereo::VRCommandOn(int nCommand)
 {
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
@@ -2249,7 +2306,15 @@ DBOOL CVRStereo::VRCommandOn(int nCommand)
 	switch (nCommand)
 	{
 		case COMMAND_ID_FIRING:	return (nHeld & SHOGOVR_BTN_FIRE) ? DTRUE : DFALSE;
-		case COMMAND_ID_JUMP:	return (nHeld & (SHOGOVR_BTN_JUMP | SHOGOVR_BTN_DOUBLEJUMP)) ? DTRUE : DFALSE;
+
+		// Grips (#42): the left grip sends JUMP; the right grip sends BOTH
+		// JUMP and DOUBLEJUMP (see UpdateInput - the right grip's jump bit is
+		// set alongside its double-jump bit).  So a regular jump ALWAYS happens
+		// - which is what carries the jump sound - and the engine additionally
+		// sees the double jump where it means something (MCA).  On foot the
+		// engine's double-jump path is silent by design, but the regular jump
+		// now plays its sound.
+		case COMMAND_ID_JUMP:	return (nHeld & SHOGOVR_BTN_JUMP) ? DTRUE : DFALSE;
 		case COMMAND_ID_DOUBLEJUMP:	return (nHeld & SHOGOVR_BTN_DOUBLEJUMP) ? DTRUE : DFALSE;
 		case COMMAND_ID_DUCK:	return (m_bCrouchOn || (nHeld & SHOGOVR_BTN_CROUCH_HOLD)) ? DTRUE : DFALSE;
 
@@ -2289,30 +2354,24 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	fForward = fRight = 0.0f;
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
 
-	// One dead zone for the whole stick, applied to each axis: a mostly
-	// forward push can't drift sideways, while a deliberate diagonal still
-	// works.  Each axis is rescaled from the dead-zone edge back to 0..1 so
-	// movement still starts gently.  Tunable in ShogoVR.ini / Options > vr
-	// settings (value is 0..1: 0.15 = 15%).
+	// RADIAL dead zone, as in the upstream Shogo-VR mod: take the length of
+	// the whole stick vector, and if it is past the dead zone rescale the
+	// WHOLE vector by one common factor (so the push direction is preserved
+	// exactly and movement starts gently at the edge of the zone).  A
+	// per-axis dead zone was tried here and felt wrong on device - it made
+	// movement only happen diagonally - so the upstream behaviour is
+	// restored.  Tunable in ShogoVR.ini / Options > vr settings
+	// (value is 0..1: 0.15 = 15%).
 	DFLOAT fDead = m_vtMoveDeadZone.GetFloat(0.15f);
 	if (fDead < 0.0f) fDead = 0.0f;
 	if (fDead > 0.95f) fDead = 0.95f;			// keep (1 - dead) > 0
 
-	DFLOAT ax = (DFLOAT)fabs(m_fMoveX);
-	DFLOAT ay = (DFLOAT)fabs(m_fMoveY);
-	DFLOAT fx = (ax > fDead) ? (ax - fDead) / (1.0f - fDead) : 0.0f;
-	DFLOAT fy = (ay > fDead) ? (ay - fDead) / (1.0f - fDead) : 0.0f;
-	if (fx <= 0.0f && fy <= 0.0f) return DFALSE;
-	if (fx > 1.0f) fx = 1.0f;
-	if (fy > 1.0f) fy = 1.0f;
+	DFLOAT fLen = (DFLOAT)sqrt(m_fMoveX * m_fMoveX + m_fMoveY * m_fMoveY);
+	if (fLen <= fDead) return DFALSE;
 
-	fRight		= (m_fMoveX < 0.0f) ? -fx : fx;
-	fForward	= (m_fMoveY < 0.0f) ? -fy : fy;
-
-	// Cap the combined magnitude at 1 so a diagonal is no faster than a
-	// straight push (the analog values cap the flat-screen speed).
-	DFLOAT fMag = (DFLOAT)sqrt(fRight * fRight + fForward * fForward);
-	if (fMag > 1.0f) { fRight /= fMag; fForward /= fMag; }
+	DFLOAT fScale = ((fLen > 1.0f ? 1.0f : fLen) - fDead) / (1.0f - fDead) / fLen;
+	fForward	= m_fMoveY * fScale;
+	fRight		= m_fMoveX * fScale;
 
 	// The game walks you relative to where you aim.  To walk where you look
 	// (or where the other hand points) instead, turn the stick by the angle
@@ -3999,16 +4058,12 @@ void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &
 // gun's barrel actually ends, in world space, so the shell can draw the sprite
 // there.  Returns DFALSE when VR isn't posing the gun by hand, so the shell
 // keeps the game's own position and the flat game is unchanged.
-DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut)
+DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut, int nFlashState)
 {
 	if (!m_pClientDE || !m_bAimByHand) return DFALSE;
 
-	// The on-foot dual pistols (Colt 45) fire from two barrels alternately
-	// (W_FIRED / W_FIRED2) and the game already puts each flash on the right
-	// barrel; this helper only knows the one muzzle offset, which pinned both
-	// flashes to the same side.  Let that weapon keep the game's own flashes
-	// (#29 follow-up); every other weapon still gets the visible-muzzle fix.
-	if (nWeaponId == GUN_COLT45_ID) return DFALSE;
+	// Dual pistols (Colt 45) fire from two barrels alternately (W_FIRED / W_FIRED2).
+	// We'll pass the fired state through to get correct muzzle position for each barrel (#41).
 
 	// Is the mod drawing its own third-person gun for this weapon?  (Same test
 	// as UpdateHeldGun - keep the two in step.)
@@ -4059,18 +4114,54 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 
 	// The muzzle offset is in the model's own frame (x right, y up, z forward)
 	// and the model is scaled about its origin, so scale the offset too.
-	DVector vMuzzle = GetWeaponMuzzleOffset((RiotWeaponId)nWeaponId, W_FIRED);
+	// Use the fired state (W_FIRED or W_FIRED2) to position correctly for alternating barrels (#41)
+	int nState = (nFlashState == W_FIRED2) ? W_FIRED2 : W_FIRED;
+	DVector vMuzzle = GetWeaponMuzzleOffset((RiotWeaponId)nWeaponId, (WeaponState)nState);
+
+	// #41: the held gun is the mod's own model, not the one the game's muzzle
+	// table was measured for, so the table's offset is only a starting point.
+	// Forward/back (z) and up/down (y) are always corrected - the flash should
+	// sit a little lower and further out than the table puts it, but only just:
+	// device pass 7 confirmed the sprite now lands in FRONT of the barrels and
+	// asked for it a touch closer (~0.5 ft) and a touch higher (~3 in), so the
+	// forward nudge was trimmed from 3 to 2 and the downward one from 3 to 2.4.
+	// Left/right (x) is different per weapon:
+	//   * The **dual pistols** (Colt 45) are the only two-barrel weapon, and the
+	//     owner wants **one flash per hand**: the table's x is what puts barrel 1
+	//     on the left and barrel 2 on the right, so it is kept and only its
+	//     *spread* is scaled down (VRPistolSpread < 1) - on device the mod's held
+	//     model put the two flashes a little too far apart.  Scaling both values
+	//     about the centre keeps them on either side of the barrel axis; the bug
+	//     was feeding both barrels the *same* x, which the spread never does.
+	//   * Every other weapon is single-barrel, so its table x was only ever
+	//     barrel-selection noise; it is replaced by one constant
+	//     (VRMuzzleLateral) so the sprite sits on the barrel axis.
+	// NOTE: this applies in **both** branches above.  The mod may be posing the
+	// third-person held gun (VRGunModel=1) *or* the first-person model with arms
+	// (VRGunModel=0, the default) - either way the flash is drawn on the gun the
+	// player sees, so the corrections must not be tied to one of them.  (They
+	// used to be, which is why a device run with VRGunModel=0 saw no change.)
+	if (nWeaponId == GUN_COLT45_ID)	vMuzzle.x *= m_vtPistolSpread.GetFloat(0.63f);
+	else							vMuzzle.x  = m_vtMuzzleLateral.GetFloat(0.0f);
+	vMuzzle.y = -m_vtFlashLower.GetFloat(2.4f);
+	vMuzzle.z += m_vtFlashOffset.GetFloat(2.0f);
+
 	VEC_MULSCALAR(vT, vR, vMuzzle.x * fScale); VEC_ADD(vOut, vPos, vT);
 	VEC_MULSCALAR(vT, vU, vMuzzle.y * fScale); VEC_ADD(vOut, vOut, vT);
 	VEC_MULSCALAR(vT, vF, vMuzzle.z * fScale); VEC_ADD(vOut, vOut, vT);
 
-	// One line per weapon, so a device run can confirm the flash moved.
+	// One line per weapon, with the offset that was applied, so a device run
+	// can tune VRFlashOffset / VRFlashLower / VRMuzzleLateral / VRPistolSpread.
 	static int s_nLoggedMuzzle = -1;
 	if (s_nLoggedMuzzle != nWeaponId)
 	{
 		s_nLoggedMuzzle = nWeaponId;
-		Log("VR muzzle flash: weapon %d -> %.1f,%.1f,%.1f (%s gun)",
-			nWeaponId, (double)vOut.x, (double)vOut.y, (double)vOut.z, bHeld ? "held" : "first-person");
+		Log("VR muzzle flash: weapon %d -> %.1f,%.1f,%.1f (%s gun; x/y/z offset %.1f,%.1f,%.1f scale %.2f%s)",
+			nWeaponId, (double)vOut.x, (double)vOut.y, (double)vOut.z, bHeld ? "held" : "first-person",
+			(double)vMuzzle.x, (double)vMuzzle.y, (double)vMuzzle.z, (double)fScale,
+			(nWeaponId == GUN_COLT45_ID)
+				? (bHeld ? " [pistols: spread-scaled, held]" : " [pistols: spread-scaled, first-person]")
+				: "");
 	}
 
 	return DTRUE;

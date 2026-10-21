@@ -1,0 +1,28 @@
+[22:28:36] Shogo VR started (CShell.dll built Oct 20 2026 22:22:16)
+[22:28:36] XrApi: listening on udp 7872/7873 (headset OCULUS EUREKA)
+[22:28:36] PlayIntroMovies: VR=0 flags=1
+[22:28:36] Resolution 2800x1400, drawing at 2800x1400, window 2800x1400
+[22:28:37] Headset connected (XrApi)
+[22:28:37] PlayIntroMovies: VR=1 flags=0
+[22:28:37] movie frame clone: window 2800x1400
+[22:28:37] movie source detected: 700,193 - 2100,1202
+[22:28:38] PlayIntroMovies: VR=1 flags=0
+[22:28:38] Game camera FOV is now 90.0 x 45.0 degrees (headset view pinned)
+[22:28:44] Game camera FOV is now 90.0 x 67.5 degrees (headset view pinned)
+[22:28:44] VR muzzle flash: weapon 13 -> -409.5,-1584.0,-8022.4 (first-person gun; x/y/z offset -6.2,-1.3,12.2 scale 1.50)
+[22:28:44] Game camera FOV is now 90.0 x 45.0 degrees (headset view pinned)
+[22:28:52] VR muzzle flash: weapon 15 -> -516.5,-1586.3,-7277.4 (first-person gun; x/y/z offset 0.6,0.0,10.3 scale 1.50)
+[22:28:54] VR muzzle flash: weapon 18 -> -626.5,-1590.5,-7429.0 (first-person gun; x/y/z offset 2.1,-0.5,13.3 scale 1.50)
+[22:28:55] VR muzzle flash: weapon 13 -> -812.6,-1592.2,-7514.7 (first-person gun; x/y/z offset -6.2,-1.3,12.2 scale 1.50)
+[22:28:59] VR flash on (0.05, 0.05, 0.05)
+[22:28:59] VR flash drawn: eye 0 rect 0,0 - 22,1400, col 0.05,0.05,0.05
+[22:28:59] VR flash off (0.00, 0.00, 0.00)
+[22:29:08] VR muzzle flash: weapon 18 -> -1042.5,-1595.9,-7125.9 (first-person gun; x/y/z offset 2.1,-0.5,13.3 scale 1.50)
+[22:29:14] VR flash on (0.22, 0.00, 0.00)
+[22:29:14] VR flash off (0.00, 0.00, 0.00)
+[22:29:14] VR flash on (0.22, 0.00, 0.00)
+[22:29:15] VR flash off (0.00, 0.00, 0.00)
+[22:29:17] VR flash on (0.15, 0.00, 0.00)
+[22:29:17] VR flash off (0.00, 0.00, 0.00)
+[22:29:20] VR muzzle flash: weapon 15 -> -691.7,-1334.4,-5955.2 (first-person gun; x/y/z offset 0.6,0.0,10.3 scale 1.50)
+[22:29:28] Shogo VR closing normally

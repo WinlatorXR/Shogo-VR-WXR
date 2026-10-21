@@ -144,10 +144,25 @@ class CVRStereo
 		DBOOL	UsesControllerAim();
 		DDWORD	GetPressed()			{ return m_nPressed; }
 		DDWORD	GetReleased()			{ return m_nReleased; }
+
+		// Haptics (#40): the vibration follows the weapon's ammo counter, not
+		// the trigger.  The shell calls this from the place ammo is actually
+		// spent (CWeaponModel::Fire), so holding the trigger gives one pulse
+		// per shot - a shotgun or a charged shot is one strong pulse instead of
+		// a continuous shake - and it can never fire on a weapon switch, a dry
+		// click, or an idle frame.
+		void	ShotFired();
+
+		// Grip remap (#42): on foot the game's double jump is silent, so the
+		// right grip is reported as the left one (see VRCommandOn).  This is the
+		// raw, pre-remap button word for anything that needs the real grips.
+		DDWORD	GetRawButtons()			{ return m_nRawButtons; }
 		void	SetGameplayInput(DBOOL b);
 		DBOOL	IsGameplayInput()		{ return m_bGameplayInput; }
-		void	SetPlayerDead(DBOOL b)		{ m_bPlayerDead = b; }
-		void	SetLevelLoaded()			{ m_bAutosavePending = DTRUE; m_nAutosaveFrames = 0; }
+		void	SetPlayerDead(DBOOL b)		{ m_bPlayerDead = b; if (b) m_bPlayerJustDied = DTRUE; }
+		void	ClearPlayerJustDied()		{ m_bPlayerJustDied = DFALSE; }
+		DBOOL	PlayerJustDied()			{ return m_bPlayerJustDied; }
+		void	SetLevelLoaded()			{ if (!m_bPlayerJustDied) { m_bAutosavePending = DTRUE; m_nAutosaveFrames = 0; } else { m_bPlayerJustDied = DFALSE; } }
 		void	UpdateInput();				// per-frame: controller -> game commands / menu keys
 		// Right A asks for the first/third-person view toggle.  The shell polls
 		// this and performs the toggle directly: the game binds that view to the
@@ -172,7 +187,11 @@ class CVRStereo
 		// game still positions the flash for the flat-screen view).  Returns
 		// DFALSE when VR isn't posing the gun by hand - the shell keeps its
 		// own spot.
-		DBOOL	GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut);
+		// nFlashState is the WeaponState (W_FIRED / W_FIRED2) the flash is for;
+		// pass it straight through from the shell so alternating barrels (Colt
+		// 45) land on the right one (#41).  No default here: WeaponDefs.h's
+		// WeaponState enum isn't visible in this header.
+		DBOOL	GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale, DVector &vOut, int nFlashState);
 
 		void	CheckRenderer(DBOOL bStable);	// resets the renderer if it's drawing at the wrong size
 		void	FitGameWindow();			// resize the game window so its client area is the render size
@@ -393,6 +412,7 @@ class CVRStereo
 		// Controllers
 		long		m_nCtrlFlags;
 		DDWORD		m_nButtons;
+		DDWORD		m_nRawButtons;		// the runtime's button word, before any handling
 		DDWORD		m_nPrevButtons;
 		DDWORD		m_nPressed;			// went down this frame
 		DDWORD		m_nReleased;		// went up this frame
@@ -411,6 +431,7 @@ class CVRStereo
 		DFLOAT		m_fCrouchAmt;		// eased crouch amount 0..1, lowers the eyes (#20)
 		DBOOL		m_bAutosavePending;	// a level just loaded - quicksave once playable (#16)
 		int			m_nAutosaveFrames;	// frames of continuous play since the level loaded
+		DBOOL		m_bPlayerJustDied;	// set when player dies; if true on SetLevelLoaded, don't autosave (#43)
 		DBOOL		m_bHaveBody;
 		DFLOAT		m_fLastOutYaw;
 		DBOOL		m_bSnapLatched;
@@ -519,7 +540,7 @@ class CVRStereo
 		VarTrack	m_vtBodyArms;		// VRBodyArms       1 = show the body's arms too (they can't follow your hands)
 		VarTrack	m_vtBodyOffset;		// VRBodyOffset     metres the body sits behind your eyes
 		VarTrack	m_vtCrouchDrop;		// VRCrouchDrop     metres to lower the eyes while crouched (#20)
-		VarTrack	m_vtMoveDeadZone;	// VRMoveDeadZone   left stick dead zone (both axes), 0..1 (#22)
+		VarTrack	m_vtMoveDeadZone;	// VRMoveDeadZone   left stick dead zone (radial), 0..1 (#22)
 		VarTrack	m_vtWeaponSwapDead;	// VRWeaponSwapDead right stick up/down dead zone to change weapon, 0..1 (#37)
 		VarTrack	m_vtGunModel;		// VRGunModel       1 = third-person gun (no arms), 0 = first-person model with arms
 		VarTrack	m_vtHeldPitch;		// VRHeldPitch/Yaw/Roll  degrees, to correct the held gun's angle
@@ -529,6 +550,10 @@ class CVRStereo
 		VarTrack	m_vtHeldY;
 		VarTrack	m_vtHeldZ;
 		VarTrack	m_vtHeldScale;		// VRHeldScale      size of the held gun
+		VarTrack	m_vtFlashOffset;	// VRFlashOffset    muzzle flash: how far past the barrel (out along it)
+		VarTrack	m_vtFlashLower;		// VRFlashLower     muzzle flash: how far below the barrel
+		VarTrack	m_vtMuzzleLateral;	// VRMuzzleLateral  muzzle flash: left/right (0 = on the barrel axis)
+		VarTrack	m_vtPistolSpread;	// VRPistolSpread   muzzle flash: dual-pistol left/right spread scale (1 = game default)
 		VarTrack	m_vtGunArms;		// VRGunArms        1 = show Sanjuro's arms on the first-person gun
 		VarTrack	m_vtDirectCapture;	// VRDirectCapture  1 = hand frames straight from the renderer to the bridge
 		VarTrack	m_vtEasyLadders;	// VREasyLadders    1 = on a ladder the stick climbs up/down

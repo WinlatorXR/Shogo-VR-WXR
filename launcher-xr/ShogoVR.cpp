@@ -71,6 +71,69 @@ std::string Trim(const std::string& s)
 	return s.substr(b, e - b);
 }
 
+// Parse a dotted version such as "0.7", "1.2.3" or "0.8-beta" into numeric
+// fields: anything from the first character that is neither a digit nor a dot
+// on is treated as a prerelease tag and ignored ("0.8-beta" -> 0, 8).  A file
+// that has no numbers at all is not a version (returns false) - an error page
+// or a truncated download must never look like an update.
+bool ParseVersion(const std::string& s, std::vector<unsigned long long>& out)
+{
+	out.clear();
+	bool any = false;
+
+	size_t i = 0;
+	while (i < s.size())
+	{
+		unsigned char c = (unsigned char)s[i];
+		if (c >= '0' && c <= '9')
+		{
+			unsigned long long v = 0;
+			while (i < s.size())
+			{
+				unsigned char d = (unsigned char)s[i];
+				if (d < '0' || d > '9') break;
+				if (v <= 1000000ULL) v = v * 10 + (unsigned long long)(d - '0');
+				++i;
+			}
+			out.push_back(v);
+			any = true;
+		}
+		else if (c == '.')
+		{
+			++i;
+		}
+		else
+		{
+			break;				// a tag or trailing text ends the version
+		}
+	}
+	return any;
+}
+
+// True when the online version is strictly newer than the installed one.
+// Missing fields count as zero ("0.8" == "0.8.0"), and a prerelease tag sorts
+// below its release ("0.8-beta" < "0.8").  Because both sides are padded with
+// zeroes, an equal or older local build is *never* offered an update slot.
+bool IsNewer(const std::string& online, const std::string& local)
+{
+	std::vector<unsigned long long> a, b;
+	if (!ParseVersion(online, a) || !ParseVersion(local, b)) return false;
+
+	size_t n = a.size() > b.size() ? a.size() : b.size();
+	for (size_t i = 0; i < n; ++i)
+	{
+		unsigned long long x = i < a.size() ? a[i] : 0;
+		unsigned long long y = i < b.size() ? b[i] : 0;
+		if (x != y) return x > y;
+	}
+
+	// Same numbers: only a release outranks its own prerelease tag.
+	const size_t dot = online.find_first_of(".-+");
+	const bool onlinePre = dot != std::string::npos
+		&& online.size() > dot + 1 && online[dot + 1] != '.';
+	return !onlinePre;
+}
+
 bool ReadFileBytes(const std::wstring& path, std::string& out)
 {
 	HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
@@ -250,9 +313,49 @@ bool DownloadToFile(const std::wstring& url, const std::wstring& path, const std
 	return ok;
 }
 
+// Install the staged files: version.txt next to the EXE, then CShell.dll into
+// the ShogoVR overlay that wins over the copy inside SHOGO.REZ (see BuildArgs).
+bool InstallStaged(const std::wstring& exeDir, const std::string& versionText,
+	const std::wstring& stageDir)
+{
+	const std::wstring stageDll = stageDir + L"CShell.dll";
+
+	unsigned long long dllSize = FileSize(stageDll);
+	if (dllSize < kMinDllBytes)
+	{
+		Log(exeDir, L"update: downloaded CShell.dll is only " + std::to_wstring(dllSize) + L" bytes, ignored");
+		return false;
+	}
+
+	const std::wstring versionPath = exeDir + L"version.txt";
+	const std::wstring overlayDll = exeDir + L"ShogoVR\\CShell.dll";
+	std::string old;
+	bool haveOld = ReadFileBytes(versionPath, old);
+
+	if (!WriteFileBytes(versionPath, versionText))
+	{
+		Log(exeDir, L"update: could not write version.txt, nothing installed");
+		return false;
+	}
+
+	if (CopyFileW(stageDll.c_str(), overlayDll.c_str(), FALSE) == 0)
+	{
+		// Only one of the two went in.  Put the old version.txt back so the
+		// update is offered again next launch instead of silently sticking.
+		if (haveOld) WriteFileBytes(versionPath, old); else DeleteFileW(versionPath.c_str());
+		Log(exeDir, L"update: CShell.dll copy failed, will be offered again");
+		return false;
+	}
+
+	DeleteTree(stageDir);		// keep the folder itself, drop the files
+	Log(exeDir, L"update: installed " + Widen(Trim(versionText)) + L" (CShell.dll "
+		+ std::to_wstring(dllSize) + L" bytes)");
+	return true;
+}
+
 // --- the update check ------------------------------------------------------
 
-void TryUpdate(const std::wstring& exeDir, const std::wstring& gameDir)
+void TryUpdate(const std::wstring& exeDir)
 {
 	Log(exeDir, L"update check: start");
 
@@ -273,7 +376,16 @@ void TryUpdate(const std::wstring& exeDir, const std::wstring& gameDir)
 	local = Trim(local);
 
 	Log(exeDir, L"versions: online=" + Widen(online) + L" local=" + (haveLocal ? Widen(local) : L"(none)"));
-	if (haveLocal && local == online) return;	// already current
+
+	// Value compare, never equality: anything the installed build is not
+	// strictly older than must NOT be offered.  So a prerelease build (say
+	// 0.8-beta) is left alone by the published 0.7 - no per-launch prompt and
+	// no risk of the "YES" answer replacing a newer DLL with the old one.
+	if (haveLocal && !IsNewer(online, local))
+	{
+		Log(exeDir, L"update check: online is not newer, no prompt");
+		return;
+	}
 
 	std::string notes;
 	if (!HttpGet(kNotesUrl, INVALID_HANDLE_VALUE, notes, err)) notes.clear();
@@ -304,39 +416,10 @@ void TryUpdate(const std::wstring& exeDir, const std::wstring& gameDir)
 		return;
 	}
 
-	unsigned long long dllSize = FileSize(stageDll);
-	if (dllSize < kMinDllBytes)
-	{
-		Log(exeDir, L"update: downloaded CShell.dll is only " + std::to_wstring(dllSize) + L" bytes, ignored");
-		return;
-	}
-
-	// Install: version.txt next to the EXE, then CShell.dll into the ShogoVR
-	// overlay that wins over the copy inside SHOGO.REZ (see BuildArgs).
-	const std::wstring overlayDll = gameDir + L"ShogoVR\\CShell.dll";
-	bool okVersion = CopyFileW(stageVersion.c_str(), versionPath.c_str(), FALSE) != 0;
-	bool okDll = okVersion && CopyFileW(stageDll.c_str(), overlayDll.c_str(), FALSE) != 0;
-
-	if (okVersion && okDll)
-	{
-		DeleteTree(stageDir);		// keep the folder itself, drop the files
-		Log(exeDir, L"update: installed " + Widen(online) + L" (CShell.dll " + std::to_wstring(dllSize) + L" bytes)");
-		return;
-	}
-
-	// Only one of the two went in.  Put the old version.txt back so the update
-	// is offered again next launch instead of silently sticking forever.
-	if (okVersion)
-	{
-		if (haveLocal) WriteFileBytes(versionPath, local);
-		else DeleteFileW(versionPath.c_str());
-	}
-	Log(exeDir, L"update: copy failed (version.txt=" + std::wstring(okVersion ? L"ok" : L"failed")
-		+ L", CShell.dll=" + std::wstring(okDll ? L"ok" : L"failed") + L"), will be offered again");
+	InstallStaged(exeDir, online, stageDir);
 }
 
 // --- launching -------------------------------------------------------------
-
 // The -rez list Client.exe needs: the base game archives (it refuses to start
 // without them), the Custom folder, the map packs, then the VR mod folder last
 // so its CShell.dll wins.  Same shape as launcher/Common.h's BuildGameArgs.
@@ -411,7 +494,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
 	std::wstring game, client;
 	if (!FindClientDir(self, game, client)) return 1;
 
-	TryUpdate(self, game);
+	TryUpdate(self);
 
 	std::wstring cmdLine = L"\"" + client + L"\" " + BuildArgs(game);
 	std::vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());

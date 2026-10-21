@@ -18,3 +18,4 @@ __pycache__/
 ShogoSource/
 shogosrc/
 *.lnk
+build/build-and-deploy.ps1

@@ -40,6 +40,56 @@ Line numbers below refer to the pristine `shogosrc/ClientShellDLL/RiotClientShel
 | 18. `UpdateLoadingLevelState`| line 2515 |
 | 19. `UpdateScreenTint` / `ClearScreenTint` / `HandleMPChangeLevel` | lines 3440 / 3493 / 9329 |
 
+Edits 20–24 continue past the original list above (see their own sections below).
+
+---
+
+## 24. `CRiotClientShell::OnMessage()` — player mode signal (#42) — **revised to the correct test**
+
+**Part of:** `case MID_PLAYER_MODECHANGE:` (pristine line 4949).
+
+> **Status (20 Oct 2026).** The #42 grip handling is now a **`game/`-only** change: the right grip
+> simply sends **both** `JUMP` and `DOUBLEJUMP` (see `Docs/BUGS_TO_FIX.md` #42), so no mech/vehicle
+> mode is needed for it at all. This edit is kept because the mode signal it fixes is **correct in
+> its own right** — the shell no longer passes `PM_MODE_KID` as a "is mech" test.
+> `CRiotClientShell::SetMechMode` is still called (the mod records the mech/vehicle mode for the
+> HUD), just from a correct expression.
+>
+> **The rule:** `PM_MODE_FOOT` (**0**) and `PM_MODE_KID` (**5**) are both
+> **on foot** (the kid is cut content — a past-life version of the characters — and
+> moves like a human). **Everything else is an MCA** (the walking mech that can
+> also transform into a vehicle, i.e. the `PM_MODE_MCA_*` modes plus
+> `PM_CURRENT_MCA` / `PM_MULTIPLAYER_MCA`). The old `m_nPlayerMode != PM_MODE_KID`
+> expression is **not** the mech test: on foot the mode is `PM_MODE_FOOT`, not
+> `KID`, so it reported "mech" everywhere on foot.
+
+```cpp
+// Tell the mod whether the player is on foot.  Both PM_MODE_FOOT
+// (0) and PM_MODE_KID (5) are "on foot" (the kid is cut content, a
+// past-life version of the characters, and moves like a human);
+// everything else is an MCA - the walking mech that can also
+// transform into a vehicle (its PM_MODE_MCA_* modes).  Note that
+// "!= PM_MODE_KID" IS NOT the mech test: on foot the mode is
+// PM_MODE_FOOT, not KID, so that expression reported "mech"
+// everywhere on foot.
+DBOOL bOnFoot = (DBOOL)(m_nPlayerMode == PM_MODE_FOOT || m_nPlayerMode == PM_MODE_KID);
+g_VRStereo.SetMechMode((DBOOL)!bOnFoot, (DBOOL)pSettings->VehicleMode());
+```
+
+Notes:
+- `IsOnFoot()` (`RiotClientShell.h:112`, `m_nPlayerMode == PM_MODE_FOOT`) is the
+  game's own on-foot test, the same one `CMoveMgr.cpp:195` uses — but it is
+  **narrower** than the rule above (it excludes `PM_MODE_KID`), so the call site
+  spells the pairing out rather than using it.
+- Verified offline against the full `PlayerModeTypes.h` list: `FOOT` and `KID` are
+  the only on-foot modes; all MCA modes, `CURRENT_MCA`, `MULTIPLAYER_MCA` and
+  `UNDEFINED` are mech. The reverted expression is shown side by side (it called
+  `FOOT` "mech").
+- With the #42 remap gone, nothing currently consumes this signal except the HUD
+  log line in `CVRStereo::SetMechMode`; it is correct so that any future use — a
+  revisited #42, or a mode-dependent HUD/behaviour — starts from the right value.
+- Nothing else about the vehicle-mode handling in this branch changes.
+
 ---
 
 ## 1. Include block
@@ -217,10 +267,12 @@ g_VRStereo.UpdateHeldGun(hWeaponModel, m_weaponModel.GetId(), vPos);
 **Part of:** `CRiotClientShell::OnMessage(...)` (pristine line 4949), inside the
 vehicle-mode branch after the position floats have been read from the message.
 
-Add:
+Add (see **note 24** for why this exact expression — `PM_MODE_FOOT` and
+`PM_MODE_KID` are both on foot, everything else is an MCA):
 
 ```cpp
-g_VRStereo.SetMechMode((DBOOL)(m_nPlayerMode != PM_MODE_KID), (DBOOL)pSettings->VehicleMode());
+DBOOL bOnFoot = (DBOOL)(m_nPlayerMode == PM_MODE_FOOT || m_nPlayerMode == PM_MODE_KID);
+g_VRStereo.SetMechMode((DBOOL)!bOnFoot, (DBOOL)pSettings->VehicleMode());
 ```
 
 ---
@@ -672,4 +724,32 @@ math in `UpdateLoadingLevel()` and the credits lands inside the virtual canvas a
 is then scaled per eye. The credits themselves are laid out on that virtual canvas
 by a matching change in `Credits.cpp` (see `Credits.cpp.md`). See
 `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #12.
+
+---
+
+## 23. `CRiotClientShell::OnKeyDown()` — a bumper level is playable (#43)
+
+**Part of:** `CRiotClientShell::OnKeyDown(int key, int rep)` (pristine line 4565),
+in the `GS_BUMPER` branch that flips to `GS_PLAYING` when the player dismisses the
+"press any key" screen putting the level back into play.
+
+Section 18 calls `g_VRStereo.SetLevelLoaded()` when `UpdateLoadingLevelState()`
+reaches playable. A level that shows the **bumper** screen leaves
+`GS_LOADINGLEVEL` inside `OnEnterWorld()` before that code can run, so it never
+armed the level-start quicksave. Arm it at this second transition too. Our code,
+right after the state change:
+
+```cpp
+	m_nGameState = GS_PLAYING;
+	PauseGame (DFALSE);
+
+	g_VRStereo.SetLevelLoaded();
+```
+
+`SetLevelLoaded()` ignores the call while the player has just died (the mod's
+`PlayerJustDied` flag, set from the existing `SetPlayerDead(IsPlayerDead())` call
+in `Update()`), so a death quick-load that happens to pass through a bumper screen
+does not overwrite the level-start save. See `Docs/BUGS_TO_FIX.md` #43.
+
+---
 

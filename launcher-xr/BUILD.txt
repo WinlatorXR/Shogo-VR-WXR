@@ -29,11 +29,28 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   (alphas and betas included) are put together by hand too, and built EXEs are
   never tracked in git.
 
+  CShell.dll (the mod itself, not this launcher) is built with
+  build/CShell.vcxproj.  Always build and deploy it with
+  build/build-and-deploy.ps1, never a bare `MSBuild /t:Rebuild`: MSBuild's
+  incremental check can silently skip recompiling when a source edit lands in or
+  near the same second as the previous object files, leaving out/CShell.dll
+  carrying an OLD `built <date>` stamp - so the fixes are never in the build and
+  a whole round of on-device testing is wasted (this happened in the 0.8 cycle).
+  The script deletes the object tree, rebuilds from scratch, refuses to deploy a
+  DLL older than the newest game/ source, copies to both targets, hash-checks
+  them and verifies the human-owned files are untouched.  It is a local
+  developer tool and is deliberately **not tracked in git** (see .gitignore).
+
   Auto-update:  before launching, ShogoVR.exe reads the release channel
   (see Docs/PROJECT_PLAN.md section 7) - version.txt and notes.txt from
   https://raw.githubusercontent.com/WinlatorXR/Shogo-VR-WXR/refs/heads/main/AutoUpdate/
   - and compares the version with the version.txt sitting next to the EXE.
-  If they differ (or the local file is missing) it shows a YES/NO box:
+  The compare is by VALUE: only a strictly newer online version offers the
+  update (0.8 and 0.8.0 are the same; a tag such as 0.8-beta sorts below 0.8),
+  so a local prerelease build is never prompted and can never be replaced by
+  an older published one.  A missing local version.txt counts as a fresh
+  install and still prompts.  If the online version is newer it shows a YES/NO
+  box:
 
     A new update is available, download now?
     Version <version>: <notes>

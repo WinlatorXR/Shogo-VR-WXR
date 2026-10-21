@@ -9,6 +9,30 @@ build fact below was verified against the source trees in this repository.
 
 ---
 
+## Hard rule: release-owned files are read-only
+
+`AutoUpdate/` and every `version.txt` inside `Release/` are **human-approved release
+artifacts**. Automated edits - including AI agents, scripts, build steps and deploy
+commands - must **never create, modify, overwrite, move or delete anything in
+`AutoUpdate/`**, and must **never touch any `version.txt` file inside `Release/`**.
+Reading them for verification is fine; writing is not.
+
+The reason: `AutoUpdate/` holds the stable, hand-picked builds that the launcher
+publishes, and changing a version number there is a release decision. `Release/` is
+where a build is staged for on-device testing and packaging into the GitHub release,
+so its metadata is hand-managed for the same reason.
+
+Inside `Release/`, the **only** files an automated pass may write are:
+
+- `Release/ShogoVR.exe`
+- `Release/ShogoVR/CShell.dll`
+
+Everything else under `Release/` (`version.txt`, `ReadMe.txt`, `Releases/…`, and any
+other packaged files) is off-limits. If a deploy seems to need a change there, stop
+and ask the owner; do not make it.
+
+---
+
 ## 0. Goal
 
 Make a **minimally changed** version of the SHOGO MAD PCVR mod run on **WinlatorXR**
@@ -535,7 +559,8 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   only in normal first-person gameplay. In third-person (chase), cutscene (external camera) and
   death / spectator views the game's own model is the one shown, so the "two mechs / two players"
   overlap is gone. Build clean; **verified on device (2026-10-14, user-confirmed)**.
-- **#22 single left-stick move dead zone (fixed and verified, 14-17 Oct)** - `GetMoveAxes()` used one radial
+- **#22 single left-stick move dead zone (fixed and verified, 14-17 Oct; RADIAL restored 20 Oct)** -
+  `GetMoveAxes()` used one radial
   `0.15` for both axes; it now uses a forward/back dead zone of `0.08` and a strafe dead zone of
   `0.20` (20%, the 14 Oct device request), rescales each axis from its own edge, then caps the
   combined magnitude at 1, so a mostly-forward push no longer drifts into a diagonal. **Follow-up
@@ -546,6 +571,15 @@ confirmed the input / render / menu work (#1-#6, #8-#11, #13-#17) and ruled out 
   per-axis settings and their VR rows were removed. The per-axis application is kept, so a
   mostly-forward push still cannot drift sideways. **Verified on device (17 Oct, user-confirmed):** the
   single 15% move dead zone ("confirmed for now").
+- **#22 follow-up (20 Oct) - the per-axis split was WRONG on device.** The per-axis dead zone above
+  felt broken in play: movement only happened "diagonally", as if an axis needed the stick past the
+  dead zone on **both** X and Y. The owner asked for the dead zone to stop coupling the axes and
+  pointed at the upstream Shogo-VR implementation. It is now restored **verbatim**
+  (`https://github.com/BrandonW24/Shogo-VR/blob/main/game/VRStereo.cpp`): a single **radial** dead
+  zone - `fLen = sqrt(moveX^2 + moveY^2)`, `DFALSE` if `fLen <= VRMoveDeadZone`, otherwise one common
+  rescale factor applied to the whole vector for `fForward`/`fRight`. The dead zone stays live
+  (`VRMoveDeadZone`, default `0.15`). This is `game/`-only - no `ShogoSourceModifications/` note.
+  See `Docs/BUGS_TO_FIX.md` #44. Build clean; awaiting a device pass.
 - **#37 right-stick up/down weapon-swap dead zone (fixed and verified, 14-17 Oct)** - `PollWeaponCycle()`
   cycled weapons as soon as `|turnY| > 0.7`, so a light up/down nudge could change weapons. It now
   requires a deliberate push (`fSwapPress = 0.80`) and re-arms only below `fSwapReset = 0.45`
@@ -638,8 +672,222 @@ The immediate next actions are:
 for 0.8: continued-fire haptics (**#40**), the dual-pistol muzzle-flash position (**#41**), the
 right-grip jump sound on foot (**#42**) and the level quicksave logic (**#43** - the earlier autosave
 family, archived `#24`/`#25`/`#33`, is picked up again now that the death-recovery save matters). All
-four are **open**; the root cause and a fix direction for each are recorded in
-`Docs/BUGS_TO_FIX.md`, and the pre-release log moved to `Docs/PreReleaseBugs/BUGS_TO_FIX.md`.
+four are fixed in code (19 Oct) and await a device pass; the root cause and fix direction for each are
+recorded in `Docs/BUGS_TO_FIX.md`, and the pre-release log moved to
+`Docs/PreReleaseBugs/BUGS_TO_FIX.md`.
+
+**0.8 fixes in code (19 Oct 2026), build clean:**
+
+- **#40 haptics while firing** - `VRStereo.cpp` `UpdateBridge()` now sets the gun hand's
+  haptic to **1 every frame** while `SHOGOVR_BTN_FIRE` is held (gameplay input + controller
+  live), instead of a 4-frame pulse on the fire edge; WinlatorXR handles the fade-out. The
+  weapon-switch blip is unchanged.
+- **#41 dual-pistol muzzle flashes** - `GetMuzzleFlashWorld()` no longer exempts
+  `GUN_COLT45_ID`; it takes the fired `WeaponState` (`W_FIRED` / `W_FIRED2`) and uses the
+  matching `GetWeaponMuzzleOffset`, so each alternating barrel gets its own flash. The shell
+  passes `eState` through at the `UpdateFlash(eState)` call site - a ShogoSource edit,
+  documented as edit 3 in `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`.
+- **#42 right-grip jump sound on foot** - on foot, `VRCommandOn(COMMAND_ID_DOUBLEJUMP)` now
+  answers `DFALSE`; `COMMAND_ID_JUMP` already covers both grip bits, so the right grip
+  performs a regular jump and plays its sound. MCA / vehicle keep the separate double jump.
+- **#43 quicksave** - the mod tracks `m_bPlayerJustDied` (set from the existing per-frame
+  `SetPlayerDead(IsPlayerDead())` call); `SetLevelLoaded()` clears it without arming the save
+  when set, and arms normally otherwise, so a death quick-load no longer overwrites the
+  level-start save. Bumper levels, which leave `GS_LOADINGLEVEL` in `OnEnterWorld()` and so
+  never reached `UpdateLoadingLevelState()`, are now armed at the `GS_BUMPER -> GS_PLAYING`
+  transition in `OnKeyDown()` - documented as edit 23 in
+  `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`.
+
+**0.8 second device pass (20 Oct 2026).** The owner tested the 19 Oct build on the Quest 3:
+**#43 PASS** and the **#5 value-based launcher update check PASS**; **#40, #41 and #42 came back
+FAIL**, each for a specific reason, and all three were revised the same day (build clean):
+
+- **#40 - PASsed on behaviour, rejected on feel.** Vibrating for as long as the trigger is held
+  is wrong for a *shot*: a shotgun or charged shot should be one kick, not a shake, and the
+  weapon-switch blip was unintended. The pulse now comes from
+  `CVRStereo::ShotFired()`, called from the **one** place ammo is actually spent,
+  `CWeaponModel::Fire()` (ShogoSource edit - documented as edit 4 in
+  `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md`), so it fires exactly once per
+  shot and never on a switch, a dry trigger hold or an idle frame. `VRHaptics` still gates it and
+  `LeftHanded` still picks the hand.
+- **#41 - both flashes had been placed at the same spot, left of both guns.** The muzzle-offset
+  table's left/right value only exists to pick *which* barrel of a two-barrel weapon fires and was
+  measured for a different gun model, so it was meaningless sideways displacement in the hand.
+  For the held gun the lateral component is now a **single constant** rather than the table's
+  per-barrel value, the vertical is set below the barrel and the depth is pushed out past the
+  muzzle - three new live CVars, `VRFlashOffset` (default 3, out), `VRFlashLower` (default 3,
+  down) and `VRMuzzleLateral` (default 3, onto the pistols), so the feel can be tuned without a
+  rebuild. Barrel alternation stays in the shot, where the engine reads it.
+- **#42 - the command-level `DFALSE` did not produce an audible jump.** Per the owner's
+  direction the remap moved to the **XrApi boundary**: in `CVRStereo::UpdateInput()`, where the
+  runtime's button word is latched, a right-grip (double-jump) bit on foot is folded onto the left
+  grip before the edge sets or any command sees it. `m_nRawButtons` keeps the pre-remap word.
+  `COMMAND_ID_JUMP` answers on the jump bit alone and `COMMAND_ID_DOUBLEJUMP` on its own bit
+  alone. A level load resets the known player mode (`ResetMechModeKnown()` from the shell at
+  `MID_PLAYER_MODECHANGE` - edit 24 in
+  `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`) and an unknown mode counts as
+  on foot, the safe direction. Checked offline against a table of the button bits for on-foot
+  (known and unknown mode), mech/vehicle, idle, inactive-controller and weapon-switch cases.
+
+`CShell.dll` was rebuilt and redeployed to `Release/ShogoVR/CShell.dll` and the GOG
+`ShogoVR/` folder (identical bytes). The launcher is unchanged by the second pass.
+
+**0.8 third device pass (20 Oct 2026).** Owner's report on the second-round build:
+
+- **#40 - PASS, "works great, fantastic haptics."** Done and signed off.
+- **#41 - FAIL.** Both flashes still landed **left of the left pistol**. The owner again asked for
+  only forward/back and up/down to change, and said the game's own default beats the broken result.
+- **#42 - FAIL, and the mech double jump broke with it.** The owner suspected the mod cannot tell
+  on-foot from in-mech - correct.
+
+**Third-pass fixes (20 Oct 2026, build clean):**
+
+- **#41** - the mod had collapsed both pistol barrels onto one spot; the addendum clarified the
+  intent is **one flash per barrel** (left hand / right hand) with the game's own left/right value.
+  The Colt 45 now **keeps** the table's per-barrel left/right (`-6.2` left / `+5.8` right), so each
+  barrel flashes in its own hand, while forward/back (`VRFlashOffset`) and up/down (`VRFlashLower`)
+  are still corrected for **all** held weapons. Single-barrel weapons use the constant
+  `VRMuzzleLateral` (default back to `0`, on the axis). Verified offline against the real table
+  values: opposite sides, the game's 12-unit separation, single-barrel on the axis.
+- **#42** - **the root cause was a wrong on-foot test in the shell.** The call site passed
+  `SetMechMode(m_nPlayerMode != PM_MODE_KID, ...)`, but `PM_MODE_FOOT` is **0**, `PM_MODE_KID` is
+  **5**, and `IsOnFoot()` is `== PM_MODE_FOOT` - so on foot the shell reported "mech", the grip fold
+  was skipped and the MCAs saw an unreliable mode (breaking the mech double jump). The shell now
+  passes `SetMechMode(!IsOnFoot(), ...)`; the mod's foot test is one named helper, `OnFoot()`
+  (unknown mode counts as on foot). Re-checked offline with the corrected signal - the mech case now
+  keeps the right grip as `COMMAND_ID_DOUBLEJUMP`.
+
+`CShell.dll` was rebuilt and redeployed to `Release/ShogoVR/CShell.dll` and the GOG `ShogoVR/`
+folder (identical bytes).
+
+**0.8 fourth device pass (20 Oct 2026).** Owner's report on the third-round build:
+
+- **#41 - close.** One flash per hand, alternating correctly; the two flashes are simply **a little
+  too wide apart**. Owner: bring them **just a tiny bit closer together** and the pistols are good.
+- **#42 - FAIL, "badly" - the double jump does not work at all.** Owner's call: **stop trying**,
+  restore the grips to a **plain 1:1 mapping** (left grip = Jump, right grip = Double jump) and
+  leave **#42 as a known bug** for now.
+
+**Fourth-pass changes (20 Oct 2026, build clean):**
+
+- **#41** - the dual pistols keep the game's own per-barrel left/right (barrel 1 left, barrel 2
+  right - one flash per hand), but it is now **scaled about the centre** by a new live CVar
+  `VRPistolSpread` (default **0.7**): `-6.2 -> -4.34` and `+5.8 -> +4.06`, so the span narrows from
+  the game's `12.0` to `8.4` while the barrels stay on **opposite sides** (they are never given the
+  same x - that was the original bug). `1.0` reproduces the game's own spread exactly. Forward/back
+  (`VRFlashOffset`) and up/down (`VRFlashLower`) are unchanged for all held weapons; single-barrel
+  weapons keep the constant `VRMuzzleLateral` (`0`). Verified offline against the real table values.
+- **#42** - **all remap attempts removed; the plain 1:1 grip mapping is restored** and the item is a
+  **known, deferred bug** (see `Docs/BUGS_TO_FIX.md` #42). In `game/` the `UpdateInput()` fold, the
+  `OnFoot()` helper, `ResetMechModeKnown()` and `m_bModeKnown` are gone; `VRCommandOn` answers
+  `COMMAND_ID_JUMP` on the jump bit and `COMMAND_ID_DOUBLEJUMP` on its own bit, 1:1. The symptom
+  (silent jump on foot) is the game's own design: a human's double jump performs a normal jump but
+  deliberately makes no sound.
+- **Mode signal kept correct (owner's rule).** The shell no longer uses `PM_MODE_KID` as an "is
+  mech" test. `PM_MODE_FOOT` (**0**) and `PM_MODE_KID` (**5**) are **both on foot** (the kid is cut
+  content - a past-life version of the characters - and moves like a human); **every other mode is an
+  MCA** (the walking mech that transforms into a vehicle). The call site computes
+  `bOnFoot = (m_nPlayerMode == PM_MODE_FOOT || m_nPlayerMode == PM_MODE_KID)` and passes `!bOnFoot`
+  (edit 24 in `ShogoSourceModifications/ClientShellDLL/RiotClientShell.cpp.md`). It is correct so any
+  future use starts from the right value; with the remap gone only the HUD log consumes it. Verified
+  offline against the full `PlayerModeTypes.h` list.
+
+`CShell.dll` was rebuilt and redeployed to `Release/ShogoVR/CShell.dll` and the GOG `ShogoVR/`
+folder (identical bytes).
+
+**0.8 fifth device pass (20 Oct 2026).** Owner's report on the fourth-round build:
+
+- **#41 - still a little too far apart.** Owner: bring the two flashes **horizontally closer
+  together still**, towards the middle, **by about a tenth of the distance**.
+- **#42 - solved.** The owner's insight: **send both `JUMP` and `DOUBLEJUMP` from the right grip at
+  the same time**, so a regular jump (with its sound) *always* happens and the game still gets the
+  double jump in a mech. No mode detection needed, and nothing is ever taken away.
+
+**Fifth-pass changes (20 Oct 2026, build clean):**
+
+- **#41** - `VRPistolSpread` default lowered from `0.7` to **`0.63`** (a further 10% off the span:
+  `0.7 * 0.9`). Barrel 1 `-6.2 -> -3.91`, barrel 2 `+5.8 -> +3.65`, span `8.4 -> 7.56`; still on
+  opposite sides of the axis, everything else unchanged. Live CVar, so it can still be nudged
+  towards `1` if it is now too close. Verified offline against the real table values.
+- **#42** - **the right grip now sends both jump bits.** In `CVRStereo::UpdateInput()`, after the
+  left-handed swap, `if (m_nButtons & SHOGOVR_BTN_DOUBLEJUMP) m_nButtons |= SHOGOVR_BTN_JUMP;`.
+  `VRCommandOn()` is back to a plain 1:1 answer on each command's own bit, so when the right grip is
+  held **both** commands are true: the regular jump plays its sound, and the engine still sees the
+  double jump where it means something (MCA). No remap, no mode gate, and the double-jump bit is
+  never cleared. This supersedes the three failed remaps - **replacing** one grip's action can never
+  be right; both actions have to happen. Verified offline across button-bit cases (each grip, both,
+  idle, non-jump buttons, left-handed). **This is the 0.8 fix for #42** - the "known bug" state of
+  the fourth pass is over.
+- **Mode signal** stays as corrected in the fourth pass (`PM_MODE_FOOT` and `PM_MODE_KID` are both
+  on foot; the shell passes `bOnFoot = (mode == PM_MODE_FOOT || mode == PM_MODE_KID)`). The fix no
+  longer needs it, but it is correct.
+
+`CShell.dll` was rebuilt and redeployed to `Release/ShogoVR/CShell.dll` and the GOG `ShogoVR/`
+folder (identical bytes).
+
+**0.8 sixth device pass (20 Oct 2026).** Owner: **neither #41 nor #42 is fixed**, and the supplied
+`ShogoVR_game.log` explained why in one line - it read `CShell.dll built Oct 20 2026 22:22:16` while
+the source had been edited at `22:34`:
+
+- **The build was stale.** `MSBuild /t:Rebuild` had been **silently skipping recompilation** (the
+  object files were seen as newer than the edited sources), so the DLL on the headset contained
+  **neither** the 5th revision **nor** the #42 change. Five device passes had been testing a build
+  with none of those fixes in it. **This is the root cause of the whole cycle's "nothing works".**
+- **#41's offsets were still gated on `bHeld`.** `VRGunModel` defaults to `0`, so on device the mod
+  poses the **first-person model with arms**; the corrections never ran. The log's
+  `(first-person gun; x/y/z offset -6.2,-1.3,12.2 ...)` - raw table values - proved it.
+
+**Sixth-pass changes (20 Oct 2026, build clean):**
+
+- **#41** - the offset corrections (`VRFlashOffset`, `VRFlashLower`, `VRMuzzleLateral`,
+  `VRPistolSpread`) are **moved out of `if (bHeld)`**, so they apply in **both** branches (held gun
+  *and* first-person model). The per-weapon x handling is unchanged. The log line now tags the
+  pistols in either branch, so a device log shows which path ran.
+- **#42** - logic unchanged and confirmed correct (right grip sets `JUMP | DOUBLEJUMP`); the owner
+  pointed out it is simply "send the left grip's jump at the same time", which the left grip already
+  proves works through the same command path. `UpdateInput` now logs **one line per grip press**
+  (`VR: grip jump - bits after mapping JUMP=.. DOUBLEJUMP=..`) so the next pass is unambiguous.
+- **New build script `build/build-and-deploy.ps1`** - clears the object tree, rebuilds from scratch,
+  and **refuses to deploy** a DLL whose `built <date>` stamp is older than the newest `game/`
+  source. Deploys to both targets and hash-checks them, then verifies `AutoUpdate/`,
+  `Release/version.txt` and `Release/ReadMe.txt` are untouched. **Use this instead of a bare
+  `MSBuild /t:Rebuild`** - that is what let the stale DLL through.
+
+`CShell.dll` was rebuilt from scratch and redeployed to `Release/ShogoVR/CShell.dll` and the GOG
+`ShogoVR/` folder (identical bytes).
+
+**0.8 seventh device pass (20 Oct 2026).** First pass on a genuinely fresh build - and the fixes
+finally showed:
+
+- **#41 - progress.** The dual-pistol flashes are now correctly **in front of** their barrels, one
+  per hand, alternating. Two small trims asked for: the sprites are **slightly too far ahead**
+  (about **half a foot**) and **slightly too low** (about **3 inches**).
+- **#42 - the owner's own fix.** In `game/XrApiUDP.cpp`, `ButtonBits()` now sets the jump bit for the
+  **right grip as well as the left** (`if (XB(0) || XB(12))`), in addition to the right grip's
+  double-jump bit - the fix at the source of the runtime word, which is the cleanest place.
+
+**Seventh-pass changes (20 Oct 2026, build clean):**
+
+- **#41** - trimmed both nudges: `VRFlashOffset` (forward) `3.0 -> 2.0` and `VRFlashLower` (down)
+  `3.0 -> 2.4`, forward by more because its error was about twice the vertical one (both live CVars).
+- **#42** - kept the owner's `XrApiUDP.cpp` fix and **removed the now-redundant `UpdateInput` line**
+  so the intent lives in one place. **Left-handed mode now swaps only the triggers, not the grips**,
+  so the right grip is "jump + double jump" in both handedness modes and the source-level fix covers
+  left-handed play too. The 8-case offline check passes (the earlier 6-case one failed on
+  left-handed-left-grip, which is what exposed the swap problem).
+- **Grip press log** (`VR: grip jump - bits after mapping ...`) kept, so the next device log proves
+  what the right grip produces.
+
+`CShell.dll` was rebuilt from scratch and redeployed to `Release/ShogoVR/CShell.dll` and the GOG
+`ShogoVR/` folder (identical bytes).
+
+**0.8 eighth revision (20 Oct 2026) - movement dead zone (owner's report).** The owner reported that
+the left stick only moved the player **diagonally**, as if an axis needed the stick past the dead
+zone on **both** X and Y. The per-axis dead zone added to `GetMoveAxes()` for #22 (15 Oct) was the
+cause - it coupled the two directions. It is now **restored to the upstream Shogo-VR radial dead
+zone verbatim** (`fLen = sqrt(moveX^2 + moveY^2)`, one common rescale for the whole vector, `DFALSE`
+if inside `VRMoveDeadZone`). The dead zone stays live (default `0.15`). `game/`-only change; tracked
+as `Docs/BUGS_TO_FIX.md` #44. Build clean; awaiting a device pass.
 
 ---
 
@@ -661,8 +909,9 @@ The latest confirmed **stable** build of the mod lives in `AutoUpdate/` at the r
 | `AutoUpdate/notes.txt` | one or two sentences describing what changed |
 
 **`AutoUpdate/` is human-owned.** Its three files are hand-picked / hand-written for each stable
-release: no build step, script or tool writes them, and they must not be edited by an automated
-pass. `Release/ReadMe.txt` (the release blurb) and every `version.txt` in the tree
+release: no build step, script or tool writes them, and they must never be created, edited,
+moved or deleted by an automated pass (see the hard rule at the top of this document).
+`Release/ReadMe.txt` (the release blurb) and every `version.txt` in the tree
 (`AutoUpdate/`, `launcher-xr/`, `Release/`) are human-edited the same way - a version number is a
 release decision, so if a human gets one wrong, a human corrects it.
 
@@ -677,7 +926,10 @@ Public URLs the launcher reads (`raw`, branch `main`):
 
 The launcher ships its **own** `version.txt` next to `ShogoVR.exe`
 (`launcher-xr/version.txt`, hand-edited to the same number - `0.7` for the current release) -
-that is the locally "installed" version it compares against.
+that is the locally "installed" version it compares against. The **installed** copy of that
+file is the one in the game folder next to `ShogoVR.exe`
+(`<game>\version.txt`, e.g. the GOG directory); the launcher reads and rewrites the one in its
+own directory, so a desktop build and a release install each carry their own.
 
 `version.txt` is the **release gate**, and it is edited **by hand, for stable, human-approved
 releases only** - nothing bumps it automatically, and no build step reads or writes it.
@@ -691,14 +943,19 @@ the new DLL can sit on `main` ahead of its version number.
 1. On start, if the container has internet access, the launcher downloads
    `AutoUpdate/version.txt` and compares it with the local `version.txt` next to the EXE.
 2. If the local `version.txt` is **missing**, the online file is assumed to be the newest
-   (first run / fresh install) and it prompts. If both exist and match, it skips straight
-   to launching the game.
-3. If the versions **differ**, a simple **YES/NO message box** appears - every time it
-   detects the different version - reading roughly:
+   (first run / fresh install) and it prompts. If the online version is **not strictly
+   newer** than the installed one, it skips straight to launching the game.
+3. **The compare is by value, never equality** (`ShogoVR.cpp`: `ParseVersion` / `IsNewer`).
+   A dotted version is parsed into numeric fields (`0.7`, `1.2.3`; a tag after the numbers,
+   such as `0.8-beta`, is ignored and sorts *below* its release). Missing fields count as
+   zero, so `0.8` and `0.8.0` are the same version. The update is offered only when the
+   online version is **greater** - so a local prerelease build (say `0.8-beta`, or a plain
+   `0.8` sitting ahead of its bump) is left alone by the published `0.7`: no per-launch
+   prompt, and no risk that answering YES replaces a newer DLL with the older published one.
+   Older or equal installs are still offered the update, exactly as before.
+   If the versions **differ and the online one is newer**, a simple **YES/NO message box**
+   appears - every time it detects the newer version - reading roughly:
    `A new update is available, download now? Version [version_number]: [notes]`
-   The compare is a plain inequality, not "is the online one newer": a local build with a
-   *higher* number (someone playtesting a prerelease) is prompted too, and answering Yes
-   installs the published build. That is intended.
 4. **NO** - launch the game as normal.
 5. **YES** - create (or empty the contents of) a temporary folder `ShogoVRUpdate` (next to
    the EXE) and download `version.txt` and `CShell.dll` into it.
@@ -742,6 +999,13 @@ normal launch with whatever DLL is currently installed.
   working directory and the expected command line, and the launcher waits for it; **YES** downloads
   and installs `version.txt` plus a `ShogoVR\CShell.dll` that is **byte-identical** to
   `AutoUpdate/CShell.dll` (SHA256 `5EE4A7C4...`, 714240 bytes), then empties `ShogoVRUpdate`.
+- **Value-based compare (20 Oct 2026), built clean.** `ShogoVR.cpp` now decides with
+  `ParseVersion` / `IsNewer` instead of `local == online`, so only a **strictly newer** online
+  version is offered (section 7, step 3). Exercised against the live `0.7` channel with the
+  prompt never answered (so nothing could be installed): installed `0.7` -> *"online is not
+  newer, no prompt"*; `0.8-beta` and `1.0` -> no prompt; older `0.6` -> prompt (then *"declined
+  by the player"*); missing local file -> prompt. That last pair is the old fallback rule and is
+  deliberately unchanged. Deployed to the GOG folder and `Release/` as `Release/ShogoVR.exe`.
 - **Still to try on device:** the updater's HTTPS under Wine/WinlatorXR (a desktop pass cannot
   prove the container's WinHTTP path).
 - **Release step (each stable release, by hand):** rebuild `CShell.dll`, copy it to
@@ -753,7 +1017,9 @@ normal launch with whatever DLL is currently installed.
   exactly two places - the GOG Shogo directory (`E:\GOG Galaxy\Games\Shogo - Mobile Armor
   Division\`) and the git release directory (`Release/`) - and nowhere else. `Release/` also holds
   the human-written `ReadMe.txt`, the human-edited `version.txt` and past packaged zips under
-  `Release/Releases/`; those are not touched by a deploy.
+  `Release/Releases/`; those are not touched by a deploy. An automated deploy may write **only**
+  `Release/ShogoVR.exe` and `Release/ShogoVR/CShell.dll` inside `Release/` - never
+  `Release/version.txt`, and never anything under `AutoUpdate/`.
 - **Packaging (by hand):** the public release ZIPs (`Release/Releases/…-vNN.zip` - alphas and betas
   included) are assembled by the owner, not by any script or tooling here. Built executables are
   **never tracked in git** (`*.exe` is ignored): the repo holds the source, the docs and the
