@@ -14,6 +14,8 @@ your copy may differ by a few lines.
 | Edit | Anchor in pristine file |
 |------|-------------------------|
 | 1. `m_bMovieShiftRight` member | beside `m_bMovieCameraRect` (pristine line 304) |
+| 2. `UpdateCreditsStereo()` declaration | beside `UpdateCreditsState()` / `UpdateDemoInfoState()` (pristine line 602) |
+| 3. `m_bVRRespawnSent` member | beside `m_fEarliestRespawnTime` (pristine line 535) |
 
 ---
 
@@ -48,3 +50,21 @@ Add (our code):
 
 Defined in `RiotClientShell.cpp` (see that note, edit 22). See
 `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #12.
+
+---
+
+## 3. `DBOOL m_bVRRespawnSent` member
+
+**Part of:** the private player-state block, beside `m_fEarliestRespawnTime`
+(pristine line 535).
+
+Add next to `m_fEarliestRespawnTime` (our code):
+
+```cpp
+		DBOOL			m_bVRRespawnSent;	// VR already asked the server to respawn
+```
+
+Initialise it to `DFALSE` in the constructor. `CRiotClientShell::Update()` sets it
+when the automatic multiplayer respawn request is sent, and
+`HandlePlayerStateChange()` clears it for every new state. See the
+`RiotClientShell.cpp.md` note (edit 24) and `Docs/BUGS_TO_FIX_V1.0.md` #48.

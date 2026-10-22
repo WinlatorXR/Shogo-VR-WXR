@@ -16,6 +16,10 @@ This version has much less customization available to make it a clean open-and-p
 
 **Updates:** the standalone launcher (`ShogoVR.exe`) checks this repository's [`AutoUpdate`](AutoUpdate) folder when it starts. If a newer stable build has been published it asks *"A new update is available, download now?"* and, on **Yes**, downloads the new `CShell.dll` and installs it before the game starts. With no internet, "No" button click, or if a download fails, it simply launches the game with what is already installed; what happened goes to `ShogoVR_update.log` next to `ShogoVR.exe`.
 
+**Custom mods:** the launcher looks in the game's `Custom` folder and no longer loads it automatically. If it holds `.rez` files you get a checkbox list before launch; if it also holds other files (the stock `custom.txt` is ignored) you can instead choose to load the whole folder or skip it. Mods that should always load go in an `AlwaysLoad` folder in the game directory, which is mounted whenever it exists. To skip the popup entirely, pass an exact, comma-separated list of filenames from `Custom` using `-mods` in the shortcut's arguments, for example `-mods "coop.rez,someothermod.rez"`; `ShogoVR` is added automatically and always loads last.
+
+**Multiplayer:** after you die, the game now respawns you automatically once the stock wait is over. The VR trigger is a held command rather than a mouse/key edge, so without this the game waited forever for a "press fire" event that VR never sent.
+
 **SHOGO-VR-WXR CONTROLS**
 
 * Left controller stick: Move

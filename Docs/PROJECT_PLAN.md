@@ -162,3 +162,9 @@ normal launch with whatever DLL is currently installed.
   barrel on the dual pistols.
 - Quicksave/quickload support: a level-start autosave, and the left trigger quick-loads
   while you're dead.
+- Multiplayer deaths respawn automatically in VR after the stock wait; the trigger is read
+  as a held command, so the game's usual "press fire" edge never arrives in VR.
+- Custom mod selector in the launcher (`launcher-xr`): a checkbox list for `.rez` files in
+  the game's `Custom` folder (the folder is no longer mounted blindly), an `AlwaysLoad`
+  folder that is mounted whenever it exists, and a `-mods "coop.rez,other.rez"` shortcut
+  argument that skips the popup for unattended launches. `ShogoVR` always loads last.

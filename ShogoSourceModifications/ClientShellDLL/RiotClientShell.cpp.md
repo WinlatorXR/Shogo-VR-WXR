@@ -753,3 +753,44 @@ does not overwrite the level-start save. See `Docs/Pre-LaunchDocs/BUGS_TO_FIX_V0
 
 ---
 
+## 24. `CRiotClientShell::Update()` and `HandlePlayerStateChange()` - multiplayer respawn (#48)
+
+**Part of:** `CRiotClientShell::Update()` (after the existing VR
+`SetPlayerDead()` / `UpdateInput()` calls) and
+`CRiotClientShell::HandlePlayerStateChange()` (right after the player-state
+byte is read).
+
+Stock Shogo only respawns a dead **multiplayer** player from
+`OnCommandOn(COMMAND_ID_FIRING)`, i.e. a fresh mouse or keyboard edge. The VR
+trigger is a held command read through the `IsCommandOn` hook, so it produces no
+edge; without an unrelated mouse click the player stays dead. In VR, after the
+stock `m_fEarliestRespawnTime` wait has elapsed, ask the server to respawn
+directly. Single player is deliberately excluded: its death path still opens the
+load menu (and the left trigger still quick-loads). Our code, in `Update()`:
+
+```cpp
+	if (g_VRStereo.IsActive() && IsMultiplayerGame() && m_nGameState == GS_PLAYING &&
+		!m_messageMgr.GetEditingState() && m_ePlayerState == PS_DEAD &&
+		!m_bVRRespawnSent && pClientDE->GetTime() >= m_fEarliestRespawnTime)
+	{
+		m_bVRRespawnSent = DTRUE;
+		g_VRStereo.Log("VR: multiplayer death - requesting respawn");
+		HandleRespawn();
+	}
+```
+
+`m_bVRRespawnSent` (a new `CRiotClientShell` member, see `RiotClientShell.h.md`)
+makes the request one-shot per death. Clear it in
+`HandlePlayerStateChange()` whenever a new player state arrives, so the next
+death gets a fresh request and a late `PS_ALIVE` resets the flag:
+
+```cpp
+	m_ePlayerState = (PlayerState) pClientDE->ReadFromMessageByte(hMessage);
+	m_bVRRespawnSent = DFALSE;		// a new state gets a fresh respawn request
+```
+
+The message sent is the same `MID_PLAYER_RESPAWN` that `HandleRespawn()` already
+builds for the stock fire path. See `Docs/BUGS_TO_FIX_V1.0.md` #48.
+
+---
+

@@ -11,9 +11,8 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
 
   ShogoVR.exe is a windowless EXE (not a .bat, not a shortcut).  It finds
   Client.exe next to itself, or one/two folders up (so it also works from the
-  overlaid ShogoVR folder next to Client.exe), launches the game with the same
-  -rez list the GUI launcher builds (base game, Custom, map packs, single
-  player, then ShogoVR last so its CShell.dll wins), waits for it to exit and
+  overlaid ShogoVR folder next to Client.exe), launches the game with the
+  -rez list described under "Custom mods" below, waits for it to exit and
   returns its exit code.
 
   Deploy: copy ShogoVR.exe alongside Client.exe in the WinlatorXR container
@@ -81,3 +80,34 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   version.txt is the release gate - nothing bumps it automatically, and a new
   DLL with an unchanged version.txt is never offered to anybody (so an early
   prerelease build can sit on main ahead of its version bump).
+
+  Custom mods:  the launcher no longer mounts the game's Custom folder
+  automatically.  Its -rez list is now:
+
+    -windowtitle Shogo
+    -rez "SHOGO.REZ" -rez "SOUND.REZ" -rez "SHOGOP*.REZ" ...
+    -rez "AlwaysLoad"                 (only when <game>\AlwaysLoad exists)
+    -rez "Custom"                     (whole-folder mode)
+      or -rez "Custom\<checked>.rez"  (individual mode)
+    +multiplayer 0 +screenwidth N +screenheight N
+    -rez "ShogoVR"                    (always last, so its CShell.dll wins)
+
+  AlwaysLoad is a folder the player creates next to Client.exe; it is mounted
+  whole, with no prompt, whenever it exists.  The Custom folder is scanned for
+  .rez files directly inside it (sorted, case-insensitive).  If it also holds
+  another file or subfolder (the stock Custom\custom.txt is ignored), the
+  player is first asked whether to load the whole folder, pick individual .rez
+  files, or continue without loading; otherwise the checkbox list of .rez files
+  appears directly.  Nothing is remembered between launches; the list's X /
+  "Continue without loading" loads nothing from Custom.
+
+  A player can skip every prompt with an exact, comma-separated list of
+  filenames inside Custom:
+
+    ShogoVR.exe -mods "coop.rez,someothermod.rez"
+
+  Only exact .rez filenames resolve (case-insensitively, no subfolders), and
+  unknown entries are skipped and logged.  ShogoVR is always added by the
+  launcher and never needs listing; a missing Custom folder or -mods "" simply
+  loads no Custom mods.  Decisions are written to ShogoVR_update.log next to
+  the EXE, like the updater.
