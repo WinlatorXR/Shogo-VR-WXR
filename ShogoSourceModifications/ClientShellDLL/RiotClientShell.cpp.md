@@ -49,7 +49,7 @@ Edits 20–24 continue past the original list above (see their own sections belo
 **Part of:** `case MID_PLAYER_MODECHANGE:` (pristine line 4949).
 
 > **Status (20 Oct 2026).** The #42 grip handling is now a **`game/`-only** change: the right grip
-> simply sends **both** `JUMP` and `DOUBLEJUMP` (see `Docs/BUGS_TO_FIX.md` #42), so no mech/vehicle
+> simply sends **both** `JUMP` and `DOUBLEJUMP` (see `Docs/Pre-LaunchDocs/BUGS_TO_FIX_V0.7_to_V0.8.md` #42), so no mech/vehicle
 > mode is needed for it at all. This edit is kept because the mode signal it fixes is **correct in
 > its own right** — the shell no longer passes `PM_MODE_KID` as a "is mech" test.
 > `CRiotClientShell::SetMechMode` is still called (the mod records the mech/vehicle mode for the
@@ -203,13 +203,13 @@ the small VR virtual screen: the menu is created before `g_VRStereo.Init` (so
 its VarTracks aren't ready at menu-init time), and `UpdateBridge()` flags when
 the headset becomes available; when the flag is set we re-run the menu's
 `ScreenDimsChanged()` so it picks up `g_VRStereo.GetMenuLayoutSize()`. See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #5.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #5.
 
 The middle three lines let the VR module know whether we are actually playing (so
 it takes over gameplay input), whether the player is dead (so the left trigger
-quick-loads the quicksave - see `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #16), and give it one chance
+quick-loads the quicksave - see `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #16), and give it one chance
 per frame to turn controller edges into game commands / menu keys. See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #3.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #3.
 
 ---
 
@@ -296,7 +296,7 @@ own player model, so the mod's copy stays hidden and only one body shows. The
 mod body is drawn only in normal first-person gameplay. The last argument is the
 mod's crouch state (`IsCrouchOn()`), so the VR body plays its crouch animation
 while the crouch controls are active (Shogo has no on-foot crouch physics, so this
-is body feedback only). See `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #21 and #20.
+is body feedback only). See `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #21 and #20.
 
 ---
 
@@ -488,7 +488,7 @@ if (m_bMovieShiftRight) g_VRStereo.ShiftMovieToRightHalf();
 `UpdateVideo()`, auto-detects the video rectangle, blanks the whole window to
 engine-black (`SetupColor1(0,0,0,DFALSE)` + `FillRect`), and re-blits the video
 into the middle of each half, so each eye sees one clean native-size copy. See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #10.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #10.
 
 ---
 
@@ -518,7 +518,7 @@ if (g_VRStereo.ShouldSwallowFaceKey(key))
 
 `ShouldSwallowFaceKey` is true only while a controller is live, gameplay input
 is active and the player is alive, for `VK` `A`/`B`/`X`/`Y`. See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #17 and #36.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #17 and #36.
 
 **Why `B` is excluded from `ClearInput()`:** `ClearInput()` takes no key
 argument, so it clears the *entire* input state. Right B is the only controller
@@ -560,7 +560,7 @@ then quick-loads it on death). Add (our code):
 g_VRStereo.SetLevelLoaded();
 ```
 
-See `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #16.
+See `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #16.
 
 ---
 
@@ -574,7 +574,7 @@ The hurt/explosion/pickup "screen flash" is this shell tint, applied with
 `pClientDE->SetCameraLightAdd()`. Under the stereo render the engine's light-add
 flash comes out as a broken full-screen quad, so while VR is active we hand the
 tint colour to the mod and it draws a clean per-eye edge vignette instead. See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #28.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #28.
 
 In `UpdateScreenTint()`, split the early-out so the mod flash is cleared when no
 tint is active, then branch the final light-add. Our code:
@@ -645,7 +645,7 @@ Add (our code):
 
 `ConsumeViewToggle()` (`game/VRStereo.cpp`) is a one-shot flag set when the XrApi A
 button edge arrives; the shell performs the same `SetExternalCamera()` call the
-`COMMAND_ID_CHASEVIEWTOGGLE` command case uses. See `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #31/#23.
+`COMMAND_ID_CHASEVIEWTOGGLE` command case uses. See `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #31/#23.
 
 ---
 
@@ -673,7 +673,7 @@ code) at the top of the case:
 Leave the original `if (m_ePlayerState == PS_ALIVE && !m_bZoomView)
 SetExternalCamera(...)` below it unchanged, so a real keyboard still toggles the view
 when no controller is live. `IsGameplayInput()` is a new accessor in
-`game/VRStereo.h`. See `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #31/#23.
+`game/VRStereo.h`. See `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #31/#23.
 
 ---
 
@@ -723,7 +723,7 @@ mod's small virtual screen (`Hook_GetSurfaceDims`), so the existing centred-layo
 math in `UpdateLoadingLevel()` and the credits lands inside the virtual canvas and
 is then scaled per eye. The credits themselves are laid out on that virtual canvas
 by a matching change in `Credits.cpp` (see `Credits.cpp.md`). See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #12.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #12.
 
 ---
 
@@ -749,7 +749,7 @@ right after the state change:
 `SetLevelLoaded()` ignores the call while the player has just died (the mod's
 `PlayerJustDied` flag, set from the existing `SetPlayerDead(IsPlayerDead())` call
 in `Update()`), so a death quick-load that happens to pass through a bumper screen
-does not overwrite the level-start save. See `Docs/BUGS_TO_FIX.md` #43.
+does not overwrite the level-start save. See `Docs/Pre-LaunchDocs/BUGS_TO_FIX_V0.7_to_V0.8.md` #43.
 
 ---
 

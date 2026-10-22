@@ -31,7 +31,7 @@ DBOOL			m_bMovieShiftRight;			// VR: movies drawn small and slid to the right ha
 It is initialised to `DFALSE` in the constructor and set from
 `g_VRStereo.IsActive()` each time an intro movie starts. See the
 `RiotClientShell.cpp.md` note (edit 15) for its use in `PlayIntroMovies()` and
-`UpdateMoviesState()`, and `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #10.
+`UpdateMoviesState()`, and `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #10.
 
 ---
 
@@ -47,4 +47,4 @@ Add (our code):
 ```
 
 Defined in `RiotClientShell.cpp` (see that note, edit 22). See
-`Docs/PreReleaseBugs/BUGS_TO_FIX.md` #12.
+`Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #12.

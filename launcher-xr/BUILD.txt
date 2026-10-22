@@ -42,7 +42,7 @@ Building ShogoVR.exe, the minimal WinlatorXR container launcher (MSVC).
   developer tool and is deliberately **not tracked in git** (see .gitignore).
 
   Auto-update:  before launching, ShogoVR.exe reads the release channel
-  (see Docs/PROJECT_PLAN.md section 7) - version.txt and notes.txt from
+  (see Docs/Pre-LaunchDocs/PROJECT_PLAN.md section 7) - version.txt and notes.txt from
   https://raw.githubusercontent.com/WinlatorXR/Shogo-VR-WXR/refs/heads/main/AutoUpdate/
   - and compares the version with the version.txt sitting next to the EXE.
   The compare is by VALUE: only a strictly newer online version offers the

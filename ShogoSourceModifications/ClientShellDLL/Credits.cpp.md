@@ -59,4 +59,4 @@ helper; give it the same virtual size (our code):
 	}
 ```
 
-See `Docs/PreReleaseBugs/BUGS_TO_FIX.md` #12.
+See `Docs/Pre-LaunchDocs/BUGS_TO_FIX.md` #12.

@@ -414,6 +414,7 @@ class CVRStereo
 		DDWORD		m_nButtons;
 		DDWORD		m_nRawButtons;		// the runtime's button word, before any handling
 		DDWORD		m_nPrevButtons;
+		char		m_szPrevBools[24];	// last raw runtime T/F string seen, for the #45 press log
 		DDWORD		m_nPressed;			// went down this frame
 		DDWORD		m_nReleased;		// went up this frame
 		DFLOAT		m_fMoveX, m_fMoveY;

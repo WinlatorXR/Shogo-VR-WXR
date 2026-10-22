@@ -51,15 +51,15 @@ struct VRMenuSetting
 // window where a row still exists.
 static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 {
-	{ "dominant hand",			"Controls",	"LeftHanded",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "right-handed", "left-handed" }, { 0, 1 } },
-	{ "hand roll flip",			"Game",		"VRHandFlip",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "off", "on" }, { 0, 1 } },
-	{ "turning",				"Game",		"VRSnapTurn",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			6, { "snap 15 deg", "snap 30 deg", "snap 45 deg", "snap 60 deg", "snap 90 deg", "smooth" }, { 15, 30, 45, 60, 90, 0 } },
-	{ "smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },
-	{ "move dead zone",			"Game",		"VRMoveDeadZone",	VRS_RANGE,	0.15f,	0, 0.5f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
-	{ "weapon swap dead zone",	"Game",		"VRWeaponSwapDead",	VRS_RANGE,	0.8f,	0, 1.0f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
-	{ "recentre view",			"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
-	{ "reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
-	{ "back",					"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
+	{ "Dominant hand",			"Controls",	"LeftHanded",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "right-handed", "left-handed" }, { 0, 1 } },
+	{ "Hands flip",			"Game",		"VRHandFlip",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "off", "on" }, { 0, 1 } },
+	{ "Turning",				"Game",		"VRSnapTurn",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			6, { "snap 15 deg", "snap 30 deg", "snap 45 deg", "snap 60 deg", "snap 90 deg", "smooth" }, { 15, 30, 45, 60, 90, 0 } },
+	{ "Smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },
+	{ "Move dead zone",			"Game",		"VRMoveDeadZone",	VRS_RANGE,	0.15f,	0, 0.5f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
+	{ "Swap wep threshold",	"Game",		"VRWeaponSwapDead",	VRS_RANGE,	0.8f,	0, 1.0f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
+	{ "Recentre view",			"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
+	{ "Reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
+	{ "Back",					"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 };
 
 static int ChoiceIndex(const VRMenuSetting& s, float v)

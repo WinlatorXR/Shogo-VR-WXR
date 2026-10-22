@@ -83,6 +83,12 @@ class CXrApiUDP
 
 		const char* GetHmdMake()	{ return m_szMake; }
 		const char* GetHmdModel()	{ return m_szModel; }
+
+		// The last packet's raw 19-char T/F button string, in the XrApi spec's
+		// order (0 = L_GRIP ... 12 = R_GRIP ... 18 = R_TRIGGER).  The mod logs
+		// it on button presses so a device log can be reconciled against the
+		// spec instead of trusted (#45).
+		const char* GetBools()		{ return m_szBools; }
 		DFLOAT	LastSync()			{ return m_fLastSync; }
 
 	private:

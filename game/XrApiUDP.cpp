@@ -427,14 +427,13 @@ DDWORD CXrApiUDP::ButtonBits()
 	#define XB(i)  (((i) < n && m_szBools[(i)] == 'T') ? 1 : 0)
 	DDWORD b = 0;
 	if (XB(18))			b |= SHOGOVR_BTN_FIRE;			// right trigger - shoot
+	// #45: DOUBLEJUMP comes ONLY from the right grip.
 	if (XB(12))			b |= SHOGOVR_BTN_DOUBLEJUMP;	// right grip - double jump
 	// #42: the LEFT grip jumps, and the right grip jumps too . The game's
 	// double jump is a separate control whose on-foot path makes no sound, so the
 	// right grip sets the regular jump bit as well (while keeping its own double
-	// jump bit for the MCA).  Setting it here, in the runtime word, means the
-	// right grip looks like a jump to everything downstream - which is what
-	// plays the sound on foot.  (The owner's fix.)
-	if (XB(0) || XB(12))	b |= SHOGOVR_BTN_JUMP;			// left grip - jump (regular)
+	// jump bit for the MCA). This will be set in the XB instead
+	if (XB(0))			b |= SHOGOVR_BTN_JUMP;			// left grip - jump (regular)
 	if (XB(10))			b |= SHOGOVR_BTN_VIEWTOGGLE;	// A - first/third person view
 	if (XB(11))			b |= SHOGOVR_BTN_TRANSFORM;		// B - transform vehicle/mech
 	if (XB(8))			b |= SHOGOVR_BTN_CROUCH;		// X - crouch toggle
@@ -442,6 +441,7 @@ DDWORD CXrApiUDP::ButtonBits()
 	if (XB(7))			b |= SHOGOVR_BTN_LEFT_TRIGGER;	// left trigger - F9 (quick load) when dead
 	if (XB(1))			b |= SHOGOVR_BTN_MENU;			// left menu
 	if (XB(13))			b |= SHOGOVR_BTN_RECENTER;		// right stick click - recentre
+		
 	#undef XB
 	return b;
 }

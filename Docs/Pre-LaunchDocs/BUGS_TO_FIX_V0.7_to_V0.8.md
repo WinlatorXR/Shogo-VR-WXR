@@ -1,4 +1,4 @@
-# BUGS_TO_FIX
+# BUGS_TO_FIX_V0.7_to_V0.8.md
 
 Live issue log for the Shogo-VR-WXR port (XrApi 0.4, in-process UDP client in `CShell.dll`).
 Context: Meta Quest 3 via WinlatorXR, side-by-side stereo, on-device session initiated from
@@ -8,8 +8,8 @@ Legend: `Open` / `In progress` / `Fixed in code` (awaiting a device pass) / `Fix
 `Won't fix`.
 
 This is the **0.8 cycle** tracker. The pre-release (0.7 and earlier) log is archived as
-[`PreReleaseBugs/BUGS_TO_FIX.md`](PreReleaseBugs/BUGS_TO_FIX.md) (`#1`-`#39`); numbering here
-**continues at `#40`** so the references in `Docs/PROJECT_PLAN.md` and the
+[`BUGS_TO_FIX.md`](BUGS_TO_FIX.md) (`#1`-`#39`); numbering here
+**continues at `#40`** so the references in `Docs/Pre-LaunchDocs/PROJECT_PLAN.md` and the
 `ShogoSourceModifications/` notes stay unambiguous. Note that `game/` files are in this repository
 (the mod); `ShogoSource/` files are the git-ignored Monolith source (any edit there needs a
 `ShogoSourceModifications/` note plus a `PROJECT_PLAN.md` entry).
@@ -395,7 +395,7 @@ fix direction and what was changed, to be confirmed on the next device pass.
 
 ## Cross-cutting notes
 
-- **The pre-release history is in `PreReleaseBugs/BUGS_TO_FIX.md`.** Its "Cross-cutting notes" still
+- **The pre-release history is in `BUGS_TO_FIX.md`.** Its "Cross-cutting notes" still
   hold - handedness/basis, the input path (`ButtonBits()` vs the on-device bool string), the 2D
   per-eye layout, `VRSyncHold` frame pacing, and the repo policy that every `ShogoSource/` change
   gets a `ShogoSourceModifications/` note plus a `PROJECT_PLAN.md` entry.

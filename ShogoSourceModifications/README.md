@@ -73,7 +73,7 @@ the DLL you also need the rest of this repository:
   ClientShellDLL and Shared `.cpp` files together with the four `game\*.cpp`
   files. It puts `..\game` on the include path, links `ws2_32.lib` and uses
   toolset v143, Win32, `/MT`, no PCH and `/Zc:forScope-`.
-- `Docs/PROJECT_PLAN.md` — build facts (defines, link libs, exports) and the
+- `Docs/Pre-LaunchDocs/PROJECT_PLAN.md` - build facts (defines, link libs, exports) and the
   XrApi UDP wire protocol.
 
 Steps:
@@ -83,7 +83,7 @@ Steps:
 2. Build `build/CShell.vcxproj` with Visual Studio 2022 (Platform Toolset v143),
    `Win32`. The output is `build\out\CShell.dll`.
 3. Deploy the DLL into a `ShogoVR\` overlay folder and launch Shogo with the
-   `-rez ShogoVR` archive last (see `Docs/PROJECT_PLAN.md`, section 2).
+   `-rez ShogoVR` archive last (see `Docs/Pre-LaunchDocs/PROJECT_PLAN.md`, section 2).     
 
 If your Monolith tree's file list differs from the project's `ClCompile` entries,
 add or remove the matching entries. The stock `ClientShellDLL.rc` is not compiled

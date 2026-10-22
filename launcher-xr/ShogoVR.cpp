@@ -21,7 +21,7 @@
 
 namespace {
 
-// The stable-release channel the updater reads (see Docs/PROJECT_PLAN.md, s. 7).
+// The stable-release channel the updater reads (see Docs/Pre-LaunchDocs/PROJECT_PLAN.md, s. 7).
 const wchar_t* const kVersionUrl =
 	L"https://raw.githubusercontent.com/WinlatorXR/Shogo-VR-WXR/refs/heads/main/AutoUpdate/version.txt";
 const wchar_t* const kNotesUrl =

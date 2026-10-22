@@ -145,6 +145,7 @@ CVRStereo::CVRStereo()
 	m_nCtrlFlags			= 0;
 	m_nButtons				= 0;
 	m_nPrevButtons			= 0;
+	m_szPrevBools[0]		= 0;
 	m_nPressed				= 0;
 	m_nReleased				= 0;
 	m_fMoveX = m_fMoveY		= 0.0f;
@@ -329,6 +330,10 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	// off the barrel.  Only the axes the owner wants are exposed:
 	//   VRFlashLower   - how far *below* the barrel the sprite sits (y)
 	//   VRFlashOffset  - how far *out past* the muzzle it sits (z)
+	//                    (#46: these apply to the DUAL PISTOLS only, scaled
+	//                    down x0.5 / x0.3 at the use site; every other weapon
+	//                    keeps the muzzle table's own y/z untouched - see the
+	//                    #46 entry in Docs/Pre-LaunchDocs/Bugs_To_Fix_V0.9.md)
 	//   VRMuzzleLateral- the left/right nudge (x) for **single-barrel** weapons
 	//   VRPistolSpread - the **dual pistols'** left/right spread scale (x): the
 	//                    game's per-barrel value is kept (barrel 1 left, barrel
@@ -336,13 +341,20 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	//                    centre, because on device the two flashes sat a little
 	//                    too far apart.  1 = the game's own spread.
 	// All are live so the feel can be tuned on-device without a rebuild.
-	// On foot these are multiplied by VRGunScale (1.5), so VRFlashOffset=2 moves
-	// the sprite 3.0 model units forward and VRFlashLower=2.4 moves it 3.6 down.
-	// (Device pass 7: the flashes were correct in front of/above the barrels but
-	// ~0.5 ft too far forward and ~3 in too low, so both were trimmed from 3.0 -
-	// forward by more, because its error was about twice the vertical one.)
-	m_vtFlashOffset.Init	(pClientDE, "VRFlashOffset",	NULL, 2.0f);
-	m_vtFlashLower.Init		(pClientDE, "VRFlashLower",		NULL, 2.4f);
+	// #46 (owner's fix): the defaults are trimmed again (2.0/2.4 -> 0.5/1.16)
+	// and the use site now splits the weapons - the DUAL PISTOLS get scaled
+	// corrections (x0.3 forward, x0.5 drop), so on foot their flash sits
+	// 0.5x0.3x1.5 = 0.225 model units past the muzzle table and
+	// 1.16x0.5x1.5 = 0.87 below it.  Every OTHER weapon skips the correction
+	// entirely and keeps the muzzle table's own y/z - the gap flagged in the
+	// #46 review (the old else-branches silently applied the full live values
+	// because GetFloat()'s 0.0 fallback never applies once the CVar has been
+	// registered) is now closed; see the #46 entry in Docs/Pre-LaunchDocs/Bugs_To_Fix_V0.9.md.
+	// (History: pass 7 trimmed both from 3.0 to 2.0/2.4; pass 8 to 1.5/2.16 -
+	// which still put the pistols too far forward/too low AND visibly broke
+	// every other weapon - hence the split above.)
+	m_vtFlashOffset.Init	(pClientDE, "VRFlashOffset",	NULL, 0.5f);
+	m_vtFlashLower.Init		(pClientDE, "VRFlashLower",		NULL, 1.16f);
 	m_vtMuzzleLateral.Init	(pClientDE, "VRMuzzleLateral",	NULL, 0.0f);
 	m_vtPistolSpread.Init	(pClientDE, "VRPistolSpread",	NULL, 0.63f);
 	m_pClientDE = pClientDE;
@@ -576,8 +588,8 @@ void CVRStereo::SetScreenFlash(DFLOAT r, DFLOAT g, DFLOAT b)
 	m_fFlashG = g;
 	m_fFlashB = b;
 	m_bFlash = (r > 0.0f || g > 0.0f || b > 0.0f) ? DTRUE : DFALSE;
-	if (m_bFlash != bWas) Log("VR flash %s (%.2f, %.2f, %.2f)", m_bFlash ? "on" : "off",
-							  (double)r, (double)g, (double)b);
+	// if (m_bFlash != bWas) Log("VR flash %s (%.2f, %.2f, %.2f)", m_bFlash ? "on" : "off",
+	// 						  (double)r, (double)g, (double)b);
 }
 
 void CVRStereo::ClearScreenFlash()
@@ -1981,18 +1993,43 @@ void CVRStereo::UpdateBridge()
 	// what plays the sound on foot - while the double-jump bit stays for the MCA.
 	// See game/XrApiUDP.cpp.  (A second, later OR of the same bit used to sit
 	// here; it was redundant with that source-level fix and has been removed so
-	// the intent lives in exactly one place.)
+	// the intent lives in exactly one place.)  #45 restates the same contract
+	// for the 1.0 cycle - jump from EITHER grip, double jump only from the
+	// right grip, and the right grip sends JUMP and DOUBLEJUMP together - and
+	// the mapping above matches it exactly; the log below exists so the next
+	// device pass PROVES it against the runtime's own bool string instead of
+	// taking the source's word for it.
 
-	// Log the jump grips on their press edges (#42).  One line per grip press,
-	// so a device log shows at a glance whether the right grip really produces
-	// BOTH bits - and, with the build stamp at the top of the log, which DLL
-	// produced it.  Cheap: it only fires when a grip goes down.
+	// Log presses with the RAW runtime bool string attached (#45).  One line
+	// per press carries both halves of the question: which physical grip the
+	// runtime says went down (XrApi order: 0 = L_GRIP ... 12 = R_GRIP - see
+	// game/XrApiUDP.cpp ButtonBits) and which bits the game was then handed.
+	// Stick-direction chars are skipped - they chatter at the dead-zone edge
+	// while driving - and the jump bits' own press edge is kept as a second
+	// trigger, so a grip that lands on an unexpected index still leaves a line.
 	{
+		const char* szBools = (m_pXrApi && m_pXrApi->IsRunning()) ? m_pXrApi->GetBools() : "";
+		int nLen  = (int)strlen(szBools);
+		int nPrev = (int)strlen(m_szPrevBools);
+		static const int anBtnIdx[] = { 0, 1, 2, 7, 8, 9, 10, 11, 12, 13, 18 };	// every non-stick bool
+		DBOOL bDown = (!m_szPrevBools[0] && nLen > 0) ? DTRUE : DFALSE;			// first packet: record it as received
+		for (int k = 0; k < (int)(sizeof(anBtnIdx) / sizeof(anBtnIdx[0])); k++)
+		{
+			int  i    = anBtnIdx[k];
+			char cNew = (i < nLen)  ? szBools[i]       : (char)0;
+			char cOld = (i < nPrev) ? m_szPrevBools[i] : (char)0;
+			if (cNew == 'T' && cOld != 'T') { bDown = DTRUE; break; }
+		}
 		DDWORD nNewGrip = m_nButtons & ~m_nPrevButtons;
-		if (nNewGrip & (SHOGOVR_BTN_JUMP | SHOGOVR_BTN_DOUBLEJUMP))
-			Log("VR: grip jump - bits after mapping JUMP=%d DOUBLEJUMP=%d (right grip gives both)",
-				(m_nButtons & SHOGOVR_BTN_JUMP) ? 1 : 0,
-				(m_nButtons & SHOGOVR_BTN_DOUBLEJUMP) ? 1 : 0);
+		//if (bDown || (nNewGrip & (SHOGOVR_BTN_JUMP | SHOGOVR_BTN_DOUBLEJUMP)))
+			// Log("VR: input - runtime bools [%s] Lgrip(0)=%d Rgrip(12)=%d -> JUMP=%d DOUBLEJUMP=%d",
+			// 	szBools,
+			// 	(nLen > 0  && szBools[0]  == 'T') ? 1 : 0,
+			// 	(nLen > 12 && szBools[12] == 'T') ? 1 : 0,
+			// 	(m_nButtons & SHOGOVR_BTN_JUMP) ? 1 : 0,
+			// 	(m_nButtons & SHOGOVR_BTN_DOUBLEJUMP) ? 1 : 0);
+		strncpy(m_szPrevBools, szBools, sizeof(m_szPrevBools) - 1);
+		m_szPrevBools[sizeof(m_szPrevBools) - 1] = 0;
 	}
 
 	m_nPressed		= m_nButtons & ~m_nPrevButtons;
@@ -2314,18 +2351,20 @@ DBOOL CVRStereo::VRCommandOn(int nCommand)
 		// sees the double jump where it means something (MCA).  On foot the
 		// engine's double-jump path is silent by design, but the regular jump
 		// now plays its sound.
-		case COMMAND_ID_JUMP:	return (nHeld & SHOGOVR_BTN_JUMP) ? DTRUE : DFALSE;
+		case COMMAND_ID_JUMP:	return ((nHeld & SHOGOVR_BTN_JUMP) || (nHeld & SHOGOVR_BTN_DOUBLEJUMP)) ? DTRUE : DFALSE;
 		case COMMAND_ID_DOUBLEJUMP:	return (nHeld & SHOGOVR_BTN_DOUBLEJUMP) ? DTRUE : DFALSE;
 		case COMMAND_ID_DUCK:	return (m_bCrouchOn || (nHeld & SHOGOVR_BTN_CROUCH_HOLD)) ? DTRUE : DFALSE;
 
 		// Walking.  The engine has no "set command" call exposed to the shell,
 		// so movement flags are driven through this query instead:
 		// CMoveMgr::UpdateControlFlags() reads IsCommandOn(FORWARD/REVERSE/
-		// STRAFE_*) each frame to build BC_CFLG_*, and the analog axis values
-		// stored by UpdateAxisMovement cap the speed.  Turning stays on the
-		// right stick (StickTurn).  GetMoveAxes() applies the dead-zone and the
-		// same rotate-to-aim transform the speed caps use, so direction and
-		// speed agree.
+		// STRAFE_*) each frame to build BC_CFLG_*.  The analog values fed to
+		// UpdateAxisMovement() do NOT scale the speed: CMoveMgr skips an
+		// axis's analog cap as soon as its BC_CFLG_* flag is set, so a
+		// nonzero axis moves at full speed (#47) - the dead zone's per-axis
+		// cut in GetMoveAxes() is what actually shapes the feel.  Turning
+		// stays on the right stick (StickTurn).  GetMoveAxes() also applies
+		// the rotate-to-aim transform, so direction agrees with the flags.
 		case COMMAND_ID_FORWARD:
 		case COMMAND_ID_REVERSE:
 		case COMMAND_ID_STRAFE_RIGHT:
@@ -2333,10 +2372,12 @@ DBOOL CVRStereo::VRCommandOn(int nCommand)
 		{
 			DFLOAT fFwd = 0.0f, fRight = 0.0f;
 			GetMoveAxes(fFwd, fRight);
-			if (nCommand == COMMAND_ID_FORWARD)      return (fFwd  > 0.0f) ? DTRUE : DFALSE;
-			if (nCommand == COMMAND_ID_REVERSE)      return (fFwd  < 0.0f) ? DTRUE : DFALSE;
-			if (nCommand == COMMAND_ID_STRAFE_RIGHT) return (fRight > 0.0f) ? DTRUE : DFALSE;
-			return (fRight < 0.0f) ? DTRUE : DFALSE;
+			//Added in some additional deadzoning here
+			DFLOAT fDead = m_vtMoveDeadZone.GetFloat(0.15f);
+			if (nCommand == COMMAND_ID_FORWARD)      return (fFwd  > fDead) ? DTRUE : DFALSE;
+			if (nCommand == COMMAND_ID_REVERSE)      return (fFwd  < -fDead) ? DTRUE : DFALSE;
+			if (nCommand == COMMAND_ID_STRAFE_RIGHT) return (fRight > fDead) ? DTRUE : DFALSE;
+			return (fRight < -fDead) ? DTRUE : DFALSE;
 		}
 	}
 	return DFALSE;
@@ -2354,14 +2395,30 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	fForward = fRight = 0.0f;
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
 
-	// RADIAL dead zone, as in the upstream Shogo-VR mod: take the length of
+	// Dead zone (#47): a radial zone with a per-axis cut on top.
+	//
+	// The radial part is the upstream Shogo-VR behaviour: take the length of
 	// the whole stick vector, and if it is past the dead zone rescale the
-	// WHOLE vector by one common factor (so the push direction is preserved
-	// exactly and movement starts gently at the edge of the zone).  A
-	// per-axis dead zone was tried here and felt wrong on device - it made
-	// movement only happen diagonally - so the upstream behaviour is
-	// restored.  Tunable in ShogoVR.ini / Options > vr settings
-	// (value is 0..1: 0.15 = 15%).
+	// WHOLE vector by one common factor, so the push direction is preserved
+	// exactly.  Tunable in ShogoVR.ini / Options > vr settings (0..1:
+	// 0.15 = 15%).
+	//
+	// The per-axis cut is the part that actually does something on this
+	// engine (the owner found it, #47): movement is consumed as BINARY
+	// commands - VRCommandOn() answers FORWARD/REVERSE/STRAFE_* from the SIGN
+	// of these values - and CMoveMgr's velocity cap then skips an axis's
+	// analog cap the moment its BC_CFLG_* flag is set (the
+	// OverrideForwardBackward logic in CMoveMgr.cpp).  So the gentle ramp the
+	// radial rescale produces never reaches the player: any nonzero axis
+	// value means full speed on that axis, and a tiny second-axis value - a
+	// slightly-off-straight push - becomes full-speed strafe.  Zeroing each
+	// axis whose own raw deflection is still inside the dead zone is the only
+	// lever this engine leaves: it is where each axis switches on, and it
+	// keeps the off-axis value from ever firing.
+	// (An earlier all-per-axis zone was rejected on device - movement felt
+	// like it only worked diagonally - so the zone's shape stays radial and
+	// the cut only removes the small axis.  The two compose: a pure diagonal
+	// now needs EACH axis past the dead zone, ~21% of stick length in total.)
 	DFLOAT fDead = m_vtMoveDeadZone.GetFloat(0.15f);
 	if (fDead < 0.0f) fDead = 0.0f;
 	if (fDead > 0.95f) fDead = 0.95f;			// keep (1 - dead) > 0
@@ -2372,6 +2429,15 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 	DFLOAT fScale = ((fLen > 1.0f ? 1.0f : fLen) - fDead) / (1.0f - fDead) / fLen;
 	fForward	= m_fMoveY * fScale;
 	fRight		= m_fMoveX * fScale;
+
+	// Per-axis cut (#47): kill an axis whose own raw deflection is inside the
+	// dead zone, whatever the other axis is doing.  Both axes can end up
+	// zeroed (a weak diagonal inside both cuts) - that still returns DTRUE on
+	// purpose, so the shell keeps ignoring the keyboard/joystick axes (see
+	// the GetMoveAxes call in RiotClientShell.cpp).
+	DFLOAT fAbsX = (DFLOAT)fabs(m_fMoveX), fAbsY = (DFLOAT)fabs(m_fMoveY);
+	if (fAbsY <= fDead) fForward = 0.0f;
+	if (fAbsX <= fDead) fRight   = 0.0f;
 
 	// The game walks you relative to where you aim.  To walk where you look
 	// (or where the other hand points) instead, turn the stick by the angle
@@ -2392,6 +2458,7 @@ DBOOL CVRStereo::GetMoveAxes(DFLOAT &fForward, DFLOAT &fRight)
 		fRight		= x * c + y * sn;
 		fForward	= -x * sn + y * c;
 	}
+
 	return DTRUE;
 }
 
@@ -4120,11 +4187,11 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 
 	// #41: the held gun is the mod's own model, not the one the game's muzzle
 	// table was measured for, so the table's offset is only a starting point.
-	// Forward/back (z) and up/down (y) are always corrected - the flash should
-	// sit a little lower and further out than the table puts it, but only just:
-	// device pass 7 confirmed the sprite now lands in FRONT of the barrels and
-	// asked for it a touch closer (~0.5 ft) and a touch higher (~3 in), so the
-	// forward nudge was trimmed from 3 to 2 and the downward one from 3 to 2.4.
+	// Forward/back (z) and up/down (y) are corrected for the DUAL PISTOLS only
+	// (#46) - the flash should sit a little lower and further out than the
+	// table puts it, but only just, and far less than the old global nudge
+	// did.  Every other weapon keeps the table's own y/z untouched - see the
+	// #46 split below.
 	// Left/right (x) is different per weapon:
 	//   * The **dual pistols** (Colt 45) are the only two-barrel weapon, and the
 	//     owner wants **one flash per hand**: the table's x is what puts barrel 1
@@ -4143,8 +4210,20 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 	// used to be, which is why a device run with VRGunModel=0 saw no change.)
 	if (nWeaponId == GUN_COLT45_ID)	vMuzzle.x *= m_vtPistolSpread.GetFloat(0.63f);
 	else							vMuzzle.x  = m_vtMuzzleLateral.GetFloat(0.0f);
-	vMuzzle.y = -m_vtFlashLower.GetFloat(2.4f);
-	vMuzzle.z += m_vtFlashOffset.GetFloat(2.0f);
+
+	// #46: only the DUAL PISTOLS get a y/z correction - and a small one
+	// (x0.5 of VRFlashLower down, x0.3 of VRFlashOffset forward).  Every OTHER
+	// weapon skips the correction entirely and keeps the muzzle table's own
+	// y/z: the flash sits exactly where the game puts it, which is how all
+	// non-pistol weapons looked before this tuning.  (The old GLOBAL
+	// correction - the commented lines below - was what broke them.)
+	if (nWeaponId == GUN_COLT45_ID)
+	{
+		vMuzzle.y = -(m_vtFlashLower.GetFloat(1.16f) * 0.5f);
+		vMuzzle.z += (m_vtFlashOffset.GetFloat(0.5f) * 0.3f);
+	}
+	//vMuzzle.y = -m_vtFlashLower.GetFloat(2.4f);
+	//vMuzzle.z += m_vtFlashOffset.GetFloat(2.0f);
 
 	VEC_MULSCALAR(vT, vR, vMuzzle.x * fScale); VEC_ADD(vOut, vPos, vT);
 	VEC_MULSCALAR(vT, vU, vMuzzle.y * fScale); VEC_ADD(vOut, vOut, vT);
@@ -4156,12 +4235,12 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 	if (s_nLoggedMuzzle != nWeaponId)
 	{
 		s_nLoggedMuzzle = nWeaponId;
-		Log("VR muzzle flash: weapon %d -> %.1f,%.1f,%.1f (%s gun; x/y/z offset %.1f,%.1f,%.1f scale %.2f%s)",
-			nWeaponId, (double)vOut.x, (double)vOut.y, (double)vOut.z, bHeld ? "held" : "first-person",
-			(double)vMuzzle.x, (double)vMuzzle.y, (double)vMuzzle.z, (double)fScale,
-			(nWeaponId == GUN_COLT45_ID)
-				? (bHeld ? " [pistols: spread-scaled, held]" : " [pistols: spread-scaled, first-person]")
-				: "");
+		// Log("VR muzzle flash: weapon %d -> %.1f,%.1f,%.1f (%s gun; x/y/z offset %.1f,%.1f,%.1f scale %.2f%s)",
+		// 	nWeaponId, (double)vOut.x, (double)vOut.y, (double)vOut.z, bHeld ? "held" : "first-person",
+		// 	(double)vMuzzle.x, (double)vMuzzle.y, (double)vMuzzle.z, (double)fScale,
+		// 	(nWeaponId == GUN_COLT45_ID)
+		// 		? (bHeld ? " [pistols: spread-scaled, held]" : " [pistols: spread-scaled, first-person]")
+		// 		: "");
 	}
 
 	return DTRUE;
