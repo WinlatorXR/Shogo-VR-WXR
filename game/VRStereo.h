@@ -33,6 +33,7 @@
 #include "VarTrack.h"
 #include "ShogoVRShared.h"
 #include "XrApiUDP.h"
+#include "WeaponDefs.h"
 
 // Values for the VRStereo console variable
 #define VR_STEREO_OFF			0
@@ -133,6 +134,10 @@ class CVRStereo
 		// post-render path, which is known to reach the captured frame.
 		void	DrawScreenFlashFrame();
 		void	DetectMovieSource();
+
+		// Physical motion melee attacks (#3)
+		void	SetCurrentWeaponId(int nId) { m_nCurrentWeaponId = nId; }
+		DBOOL	IsMeleeWeaponEquipped();
 
 		// Motion controllers (through the bridge)
 		DBOOL	IsControllerActive();
@@ -469,6 +474,13 @@ class CVRStereo
 		DDWORD		m_nDumpedWeapons[2];	// weapons whose model parts are listed in ShogoVR_models.txt
 		DBOOL		m_bCaptureHook;
 
+		// Physical motion melee (#3)
+		int			m_nCurrentWeaponId;
+		DVector		m_vMeleeHandPrevP;
+		DBOOL		m_bMeleeHandPrevValid;
+		DFLOAT		m_fMeleeLastFireTime;
+		DBOOL		m_bMeleeTrigger;
+
 		DBOOL		m_bMech;
 		DBOOL		m_bVehicle;
 		DFLOAT		m_fLoggedZoom;
@@ -562,6 +574,7 @@ class CVRStereo
 		VarTrack	m_vtHaptics;		// VRHaptics        1 = pulse the controllers on fire/weapon edges
 		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = block for a new HMD_SYNC each frame (default on)
 		VarTrack	m_vtFlashTest;		// VRFlashTest      0 = off; non-zero forces a red flash every frame (diagnostic)
+		VarTrack	m_vtMeleeSens; // 0 = off, 20/60/80 = gesture sensitivity
 };
 
 extern CVRStereo g_VRStereo;

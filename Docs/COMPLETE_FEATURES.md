@@ -21,3 +21,20 @@ Completed 22 Oct 2026.
   mounts it whenever it exists, with no prompt.
 - Load order is the base game and map packs, then `AlwaysLoad`, then the Custom selection,
   then `ShogoVR` last (so its `CShell.dll` wins).
+
+
+## #2 - Multiplayer support
+
+Confirmed to be working to some extent as of 22 Oct 2026. No further work needed
+
+**Multiplayer support** - We can look into seeing if we can get MP working. For example: It would be amazing if the [Shogo Co-op mod](https://www.moddb.com/mods/shogo-coop) worked alongside this one. This one might need zero code changes at all in reality, just review to ensure it's possible
+
+
+## #3 - Physical motion melee attacks
+
+Completed 25 Oct 2026.
+
+- Dominant-hand slash gesture (any direction) while holding a melee weapon triggers a shot via `COMMAND_ID_FIRING` like a normal trigger pull; no dedicated melee button/command.
+- Weapon tracked from shell/held-gun; gesture only active for melee weapons.
+- VR menu: single `Gesture melee sens.` (OFF, 10%, 15%, 25%, 30%, 40%, 60%, 80%), default 15%. Higher % = easier/smaller swing. Behind scenes maps to velocity threshold and cooldown.
+- Works in right/left-handed modes, respects existing trigger firing for ranged weapons, haptics on actual shot.

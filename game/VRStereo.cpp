@@ -194,6 +194,12 @@ CVRStereo::CVRStereo()
 	m_hArmlessPV			= DNULL;
 	m_nDumpedWeapons[0] = m_nDumpedWeapons[1] = 0;
 	m_bCaptureHook			= DFALSE;
+
+	m_nCurrentWeaponId		= GUN_NONE;
+	VEC_INIT(m_vMeleeHandPrevP);
+	m_bMeleeHandPrevValid	= DFALSE;
+	m_fMeleeLastFireTime	= -1000.0f;
+	m_bMeleeTrigger			= DFALSE;
 	m_bMech					= DFALSE;
 	m_bVehicle				= DFALSE;
 	m_fLoggedZoom			= 1.0f;
@@ -314,6 +320,7 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtHaptics.Init		(pClientDE, "VRHaptics",		NULL, 1.0f);
 	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 1.0f);
 	m_vtFlashTest.Init		(pClientDE, "VRFlashTest",		NULL, 0.0f);
+	m_vtMeleeSens.Init		(pClientDE, "VRMeleeSens",		NULL, 15.0f);
 	m_vtDirectCapture.Init	(pClientDE, "VRDirectCapture",	NULL, 1.0f);
 	m_vtHeldPitch.Init		(pClientDE, "VRHeldPitch",		NULL, 0.0f);
 	m_vtHeldYaw.Init		(pClientDE, "VRHeldYaw",		NULL, 0.0f);
@@ -2322,6 +2329,10 @@ void CVRStereo::Hook_GetAxisOffsets(DFLOAT *offsets)
 
 void CVRStereo::ShotFired()
 {
+	// A motion-melee slash is a one-shot: once the weapon actually swings,
+	// drop the synthetic trigger so it does not auto-repeat.
+	m_bMeleeTrigger = DFALSE;
+
 	// A shot was actually fired (an ammo-consuming shot, or a dry click): buzz
 	// the gun hand.  Called once per shot by CWeaponModel::Fire, which is the
 	// one place that decrements the ammo count, so this cannot fire on a
@@ -2335,6 +2346,13 @@ void CVRStereo::ShotFired()
 	else				m_fHapticR = 2.0f;
 }
 
+DBOOL CVRStereo::IsMeleeWeaponEquipped()
+{
+	if (!IsControllerActive()) return DFALSE;
+	if (GetWeaponType((RiotWeaponId)m_nCurrentWeaponId) == MELEE) return DTRUE;
+	return DFALSE;
+}
+
 DBOOL CVRStereo::VRCommandOn(int nCommand)
 {
 	if (!m_bGameplayInput || !IsControllerActive()) return DFALSE;
@@ -2342,7 +2360,21 @@ DBOOL CVRStereo::VRCommandOn(int nCommand)
 	DDWORD nHeld = m_nButtons & ~m_nSuppressed;
 	switch (nCommand)
 	{
-		case COMMAND_ID_FIRING:	return (nHeld & SHOGOVR_BTN_FIRE) ? DTRUE : DFALSE;
+		case COMMAND_ID_FIRING:
+		{
+			// A detected melee slash fires for a short window so that every
+			// IsCommandOn(FIRING) query in this frame (player flags, move
+			// manager, stealth check) sees the same shot.  ShotFired() clears
+			// the latch once the weapon actually swings; the timeout is only
+			// a safety net.
+			if (m_bMeleeTrigger)
+			{
+				DFLOAT fNow = m_pClientDE ? m_pClientDE->GetTime() : 0.0f;
+				if ((fNow - m_fMeleeLastFireTime) < 0.25f) return DTRUE;
+				m_bMeleeTrigger = DFALSE;
+			}
+			return (nHeld & SHOGOVR_BTN_FIRE) ? DTRUE : DFALSE;
+		}
 
 		// Grips (#42): the left grip sends JUMP; the right grip sends BOTH
 		// JUMP and DOUBLEJUMP (see UpdateInput - the right grip's jump bit is
@@ -3661,6 +3693,84 @@ void CVRStereo::UpdateInput()
 
 	UpdateCrouchOffset();
 
+	// Physical motion melee attacks (#3): detect a slash of the dominant hand
+	// (any direction) while holding a melee weapon. If a gesture is detected,
+	// fire once via COMMAND_ID_FIRING like a normal shot. Otherwise rely on
+	// the trigger.
+	if (m_bGameplayInput && IsControllerActive() && !m_bPlayerDead && IsMeleeWeaponEquipped())
+	{
+		DFLOAT fSens = m_vtMeleeSens.GetFloat(60.0f);
+		if (fSens <= 0.0f)
+		{
+			m_bMeleeTrigger = DFALSE;
+			m_bMeleeHandPrevValid = DFALSE;
+		}
+		else
+		{
+			CClientDE* pClientDE = m_pClientDE;
+			DFLOAT fNow = pClientDE ? pClientDE->GetTime() : 0.0f;
+			DFLOAT fDt = 0.016666f;
+			if (pClientDE)
+			{
+				static DBOOL bFirstTime = DTRUE;
+				static DBOOL bLastFrameValid = DFALSE;
+				static DFLOAT fLastTime = 0.0f;
+				if (bFirstTime || !bLastFrameValid)
+				{
+					fLastTime = fNow;
+					bLastFrameValid = DTRUE;
+					bFirstTime = DFALSE;
+				}
+				if (fNow >= fLastTime && (fNow - fLastTime) < 1.0f)
+					fDt = fNow - fLastTime;
+				fLastTime = fNow;
+			}
+
+			// Higher percentage = easier to trigger (smaller swing)
+			if (fSens <= 10.0f) fSens = 10.0f;
+			else if (fSens <= 15.0f) fSens = 15.0f;
+			else if (fSens <= 25.0f) fSens = 25.0f;
+			else if (fSens <= 30.0f) fSens = 30.0f;
+			else if (fSens <= 40.0f) fSens = 40.0f;
+			else if (fSens <= 60.0f) fSens = 60.0f;
+			else fSens = 80.0f;
+			DFLOAT fT = 1.0f - (fSens / 100.0f);
+			DFLOAT fThreshVel = 0.7f + (fT * 3.0f);
+			DFLOAT fCd = 0.1f + (fT * 0.18f);
+
+			DVector vHandP = m_bLeftHanded ? m_vLeftP : m_vRightP;
+
+			if (!m_bMeleeTrigger && (fNow - m_fMeleeLastFireTime) >= fCd)
+			{
+				if (m_bMeleeHandPrevValid)
+				{
+					DVector vVel;
+					VEC_SUB(vVel, vHandP, m_vMeleeHandPrevP);
+					DFLOAT fVel = VEC_MAG(vVel);
+					DFLOAT fVelPerSec = fVel / (fDt > 0.000001f ? fDt : 0.016666f);
+					if (fVelPerSec >= fThreshVel)
+					{
+						m_bMeleeTrigger = DTRUE;
+						m_fMeleeLastFireTime = fNow;
+						if (m_vtHaptics.GetFloat(1.0f) != 0.0f)
+						{
+							if (m_bLeftHanded) m_fHapticL = 2.0f;
+							else m_fHapticR = 2.0f;
+						}
+					}
+				}
+			}
+
+			VEC_COPY(m_vMeleeHandPrevP, vHandP);
+			m_bMeleeHandPrevValid = DTRUE;
+		}
+	}
+	else
+	{
+		m_bMeleeTrigger = DFALSE;
+		m_bMeleeHandPrevValid = DFALSE;
+	}
+
 	if (!IsControllerActive())
 	{
 		m_bGameplayInput = DFALSE;
@@ -4021,6 +4131,7 @@ static const HeldGunModel s_HeldGuns[] =
 
 void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos)
 {
+	m_nCurrentWeaponId = nWeaponId;
 	if (!m_pClientDE) return;
 	CClientDE* pClientDE = m_pClientDE;
 

@@ -41,8 +41,8 @@ struct VRMenuSetting
 	float		fMin, fMax, fStep, fShow;	// ranges: fShow multiplies for display (100 for %)
 	const char*	szUnit;
 	int			nChoices;
-	const char*	szChoice[6];
-	float		fChoice[6];
+	const char*	szChoice[8];
+	float		fChoice[8];
 };
 
 // Trimmed to a short list (2026-10-13, #30); the removed rows are pinned to
@@ -57,6 +57,7 @@ static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 	{ "Smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },
 	{ "Move dead zone",			"Game",		"VRMoveDeadZone",	VRS_RANGE,	0.15f,	0, 0.5f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
 	{ "Swap wep threshold",	"Game",		"VRWeaponSwapDead",	VRS_RANGE,	0.8f,	0, 1.0f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
+	{ "Gesture melee sens.",	"Game",		"VRMeleeSens",		VRS_CHOICE,	15,		0, 0, 0, 1,			"",			8, { "OFF", "10%", "15%", "25%", "30%", "40%", "60%", "80%" }, { 0, 10, 15, 25, 30, 40, 60, 80 } },
 	{ "Recentre view",			"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "Reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "Back",					"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
