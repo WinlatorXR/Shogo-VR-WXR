@@ -442,6 +442,9 @@ class CVRStereo
 		DFLOAT		m_fLastOutYaw;
 		DBOOL		m_bSnapLatched;
 		int			m_nWeaponLatch;
+		DFLOAT		m_fWepSwapLastTime;
+		DBOOL		m_bWepSwapPhysLeftLatch;
+		DBOOL		m_bWepSwapPhysRightLatch;
 		int			m_nMenuDir;
 		DFLOAT		m_fMenuRepeatTime;
 		DFLOAT		m_fWorldScaleUsed;
@@ -574,7 +577,9 @@ class CVRStereo
 		VarTrack	m_vtHaptics;		// VRHaptics        1 = pulse the controllers on fire/weapon edges
 		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = block for a new HMD_SYNC each frame (default on)
 		VarTrack	m_vtFlashTest;		// VRFlashTest      0 = off; non-zero forces a red flash every frame (diagnostic)
-		VarTrack	m_vtMeleeSens; // 0 = off, 20/60/80 = gesture sensitivity
+		VarTrack	m_vtMeleeSens;		// Gesture melee sensitivity
+		VarTrack	m_vtWepSwapPhysical;	// PhysicalWepSwap
+		VarTrack	m_vtWepSwapThumb;		// WepSwapThumbstick
 };
 
 extern CVRStereo g_VRStereo;

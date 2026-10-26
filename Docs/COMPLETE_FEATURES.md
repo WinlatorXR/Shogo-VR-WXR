@@ -38,3 +38,12 @@ Completed 25 Oct 2026.
 - Weapon tracked from shell/held-gun; gesture only active for melee weapons.
 - VR menu: single `Gesture melee sens.` (OFF, 10%, 15%, 25%, 30%, 40%, 60%, 80%), default 15%. Higher % = easier/smaller swing. Behind scenes maps to velocity threshold and cooldown.
 - Works in right/left-handed modes, respects existing trigger firing for ranged weapons, haptics on actual shot.
+
+
+## #4 - Physical motion weapon swapping
+
+Completed 26 Oct 2026.
+
+- Reach over shoulder with left hand behind HMD/shoulder area → previous weapon, right hand → next weapon (independent of `LeftHanded`), cooldown ~0.6s, haptics on the swapping hand.
+- Sends `COMMAND_ID_PREV_WEAPON` / `COMMAND_ID_NEXT_WEAPON` via `PollWeaponCycle()`.
+- VR menu toggles "Physical wep swap" and "Wep Swap Via RS" (thumbstick) in VR section; both can be on, cannot both be off (thumbstick auto-enables).

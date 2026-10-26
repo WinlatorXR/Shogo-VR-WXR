@@ -57,6 +57,8 @@ static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 	{ "Smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },
 	{ "Move dead zone",			"Game",		"VRMoveDeadZone",	VRS_RANGE,	0.15f,	0, 0.5f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
 	{ "Swap wep threshold",	"Game",		"VRWeaponSwapDead",	VRS_RANGE,	0.8f,	0, 1.0f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
+	{ "Physical wep swap",		"Game",		"PhysicalWepSwap",	VRS_TOGGLE,	0,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "Wep Swap Via RS",		"Game",		"WepSwapThumbstick",VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
 	{ "Gesture melee sens.",	"Game",		"VRMeleeSens",		VRS_CHOICE,	15,		0, 0, 0, 1,			"",			8, { "OFF", "10%", "15%", "25%", "30%", "40%", "60%", "80%" }, { 0, 10, 15, 25, 30, 40, 60, 80 } },
 	{ "Recentre view",			"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "Reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
@@ -222,6 +224,35 @@ void CVRMenu::Change (int nItem, int nDir)
 	}
 	else return;
 
+	// Physical motion weapon swapping (#4): mutual exclusion - cannot have both off
+	if (strcmp(s.szKey, "PhysicalWepSwap") == 0 || strcmp(s.szKey, "WepSwapThumbstick") == 0)
+	{
+		// find the other
+		for (int i = 0; i < VRMENU_ITEMS; i++)
+		{
+			if (s_Settings[i].nType == VRS_ACTION) continue;
+			if (strcmp(s_Settings[i].szKey, "PhysicalWepSwap") == 0 && strcmp(s.szKey, "WepSwapThumbstick") == 0)
+			{
+				// ensure at least one is on
+				if (m_fValue[i] == 0.0f && m_fValue[nItem] == 0.0f)
+				{
+					m_fValue[i] = 1.0f;
+					WriteValue(i);
+					MakeValueSurface(i);
+				}
+			}
+			else if (strcmp(s_Settings[i].szKey, "WepSwapThumbstick") == 0 && strcmp(s.szKey, "PhysicalWepSwap") == 0)
+			{
+				if (m_fValue[i] == 0.0f && m_fValue[nItem] == 0.0f)
+				{
+					m_fValue[i] = 1.0f;
+					WriteValue(i);
+					MakeValueSurface(i);
+				}
+			}
+		}
+	}
+
 	WriteValue (nItem);
 	MakeValueSurface (nItem);
 	if (nDir < 0) PlayLeftSound(); else PlayRightSound();
@@ -268,6 +299,23 @@ void CVRMenu::Return()
 			m_fValue[i] = s_Settings[i].fDefault;
 			WriteValue (i);
 			MakeValueSurface (i);
+		}
+		// Enforce mutual exclusion after reset
+		{
+			float fPhys = 1.0f;
+			float fThumb = 1.0f;
+			int iPhys = -1, iThumb = -1;
+			for (i = 0; i < VRMENU_ITEMS; i++)
+			{
+				if (strcmp(s_Settings[i].szKey, "PhysicalWepSwap") == 0) { fPhys = m_fValue[i]; iPhys = i; }
+				if (strcmp(s_Settings[i].szKey, "WepSwapThumbstick") == 0) { fThumb = m_fValue[i]; iThumb = i; }
+			}
+			if (iPhys >= 0 && iThumb >= 0 && fPhys == 0.0f && fThumb == 0.0f)
+			{
+				m_fValue[iThumb] = 1.0f;
+				WriteValue(iThumb);
+				MakeValueSurface(iThumb);
+			}
 		}
 		PlayReturnSound();
 	}

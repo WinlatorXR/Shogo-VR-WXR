@@ -168,6 +168,9 @@ CVRStereo::CVRStereo()
 	m_fLastOutYaw			= 0.0f;
 	m_bSnapLatched			= DFALSE;
 	m_nWeaponLatch			= 0;
+	m_fWepSwapLastTime		= -1000.0f;
+	m_bWepSwapPhysLeftLatch	= DFALSE;
+	m_bWepSwapPhysRightLatch= DFALSE;
 	m_nMenuDir				= 0;
 	m_fMenuRepeatTime		= 0.0f;
 	m_fWorldScaleUsed		= 40.0f;
@@ -321,6 +324,8 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 1.0f);
 	m_vtFlashTest.Init		(pClientDE, "VRFlashTest",		NULL, 0.0f);
 	m_vtMeleeSens.Init		(pClientDE, "VRMeleeSens",		NULL, 15.0f);
+	m_vtWepSwapPhysical.Init(pClientDE, "PhysicalWepSwap",	NULL, 0.0f);
+	m_vtWepSwapThumb.Init	(pClientDE, "WepSwapThumbstick",	NULL, 1.0f);
 	m_vtDirectCapture.Init	(pClientDE, "VRDirectCapture",	NULL, 1.0f);
 	m_vtHeldPitch.Init		(pClientDE, "VRHeldPitch",		NULL, 0.0f);
 	m_vtHeldYaw.Init		(pClientDE, "VRHeldYaw",		NULL, 0.0f);
@@ -2612,6 +2617,78 @@ DFLOAT CVRStereo::StickTurn()
 int CVRStereo::PollWeaponCycle()
 {
 	if (!m_bGameplayInput || !IsControllerActive())
+	{
+		m_nWeaponLatch = 0;
+		return 0;
+	}
+
+	// Physical motion weapon swapping (#4): reach behind shoulder (left = prev, right = next)
+	if (m_vtWepSwapPhysical.GetFloat(0.0f) != 0.0f)
+	{
+		CClientDE* pClientDE = m_pClientDE;
+		DFLOAT fNow = pClientDE ? pClientDE->GetTime() : 0.0f;
+		if ((fNow - m_fWepSwapLastTime) >= 0.6f)
+		{
+			DVector vH = m_vHeadP;
+			DVector vHF = m_vHeadF;
+			DVector vHU = m_vHeadU;
+			DVector vHR;
+			VEC_CROSS(vHR, vHF, vHU);
+			DFLOAT fMagHR = (DFLOAT)sqrt(VEC_DOT(vHR, vHR));
+			if (fMagHR > 0.000001f) { vHR.x /= fMagHR; vHR.y /= fMagHR; vHR.z /= fMagHR; }
+
+			// Left controller
+			{
+				DVector vRel;
+				VEC_SUB(vRel, m_vLeftP, vH);
+				DFLOAT fDotF = VEC_DOT(vRel, vHF);
+				// roughly equal height to HMD or below/around - check vertical relative to head
+				DFLOAT fDotU = vRel.y; // world up approx
+				DFLOAT fDotR = VEC_DOT(vRel, vHR);
+				// behind front of HMD means in front? no - behind means negative dot with forward
+				if (fDotF < -0.05f)
+				{
+					// close to shoulder height
+					if (fabs(fDotU) < 0.25f && fabs(fDotR) > 0.05f)
+					{
+						if (fDotR < -0.05f && !m_bWepSwapPhysLeftLatch)
+						{
+							m_bWepSwapPhysLeftLatch = DTRUE;
+							m_fWepSwapLastTime = fNow;
+							if (m_vtHaptics.GetFloat(1.0f) != 0.0f) m_fHapticL = 2.0f;
+							return -1;
+						}
+					}
+				}
+				if (fDotF >= -0.01f) m_bWepSwapPhysLeftLatch = DFALSE;
+			}
+			// Right controller
+			{
+				DVector vRel;
+				VEC_SUB(vRel, m_vRightP, vH);
+				DFLOAT fDotF = VEC_DOT(vRel, vHF);
+				DFLOAT fDotU = vRel.y;
+				DFLOAT fDotR = VEC_DOT(vRel, vHR);
+				if (fDotF < -0.05f)
+				{
+					if (fabs(fDotU) < 0.25f && fabs(fDotR) > 0.05f)
+					{
+						if (fDotR > 0.05f && !m_bWepSwapPhysRightLatch)
+						{
+							m_bWepSwapPhysRightLatch = DTRUE;
+							m_fWepSwapLastTime = fNow;
+							if (m_vtHaptics.GetFloat(1.0f) != 0.0f) m_fHapticR = 2.0f;
+							return 1;
+						}
+					}
+				}
+				if (fDotF >= -0.01f) m_bWepSwapPhysRightLatch = DFALSE;
+			}
+		}
+	}
+
+	// Thumbstick swap
+	if (m_vtWepSwapThumb.GetFloat(1.0f) == 0.0f)
 	{
 		m_nWeaponLatch = 0;
 		return 0;

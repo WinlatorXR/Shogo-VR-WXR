@@ -3,46 +3,6 @@
 This document is features we want to implement for the current release, as future features are started they will be moved into here
 
 
-## #4 - Physical motion weapon swapping
-
-### Goal
-Allow the player to reach over their shoulder with their left hand to swap to the previous weapon, or their right hand to swap to the next weapon, with a small cooldown timer. Add VR menu toggles for this mode and for thumbstick swapping, with mutual-exclusion logic.
-
-### Affected files
-- `game/VRStereo.h` / `game/VRStereo.cpp` - shoulder-reach detection (left/right hands), cooldown, swap execution, raw pre-swap pose usage, mutual-exclusion enforcement
-- `game/VRMenu.h` / `game/VRMenu.cpp` - add "Physical wep swap" and "Wep swap thumbstick" toggles, update `Change()` mutual-exclusion
-- `game/XrApiUDP.cpp` / `game/ShogoVRShared.h` - controller poses
-- `ShogoSource/ClientShellDLL/RiotClientShell.cpp` / weapon cycle logic - integrate with existing weapon swap path
-
-### Approach
-1. **Settings**: Add two toggles to VR settings:
-   - `PhysicalWepSwap` (default: off or as desired) - "Physical wep swap"
-   - `WepSwapThumbstick` (default: on to preserve current behavior) - "Wep swap thumbstick"
-   Enforce: if turning one OFF would make both OFF, automatically turn the other back ON.
-2. **Raw pre-swap poses**: The handedness swap in `UpdateBridge()` trades `m_vRight*`/`m_vLeft*` poses and remaps trigger bits, but `m_nRawButtons` is assigned after swap. For physical swaps we must use **raw pre-swap left/right hand poses/triggers** (store copies before applying `m_bLeftHanded` swaps). Left hand reach should always mean "previous" regardless of `LeftHanded` setting.
-3. **Shoulder detection**: For each hand, check if it is behind/over the shoulder relative to head/camera/body orientation (e.g. hand position behind the torso/shoulder plane, within a cone behind the corresponding shoulder, with sufficient extension/reach). Require a brief hold or just a reach gesture with cooldown. Use per-hand direction: left hand -> previous weapon, right hand -> next weapon.
-4. **Cooldown**: Add a small cooldown timer (e.g. 0.5-1.0s) to prevent rapid repeated swaps.
-5. **Integration**: Trigger existing weapon cycle path (`PollWeaponCycle()` or equivalent) with +1/-1 direction. Only allow when controllers active and not in menus/invalid states.
-
-### Settings
-- `Game/PhysicalWepSwap` (bool)
-- `Game/WepSwapThumbstick` (bool)
-
-### Edge cases / risks
-- **Handedness independence**: Physical directions must not flip with `LeftHanded`. Must use raw pre-swap poses.
-- **Both modes off**: Prevent this state; auto-enable thumbstick swap if physical swap is turned off while thumbstick is already off.
-- **False triggers**: Reaching behind during movement/combat could trigger accidentally - use reasonable thresholds and cooldown.
-- **Menu/inventory**: Disable during menus if needed.
-- **Both on**: Allowed (as specified).
-
-### Acceptance criteria
-- [ ] Reaching over left shoulder with left hand swaps to previous weapon; right shoulder with right hand swaps to next weapon (independent of `LeftHanded`).
-- [ ] Cooldown prevents rapid swapping.
-- [ ] Menu toggles exist with correct labels.
-- [ ] Mutual-exclusion enforced (cannot have both off; turning one off while other off enables the other).
-- [ ] Thumbstick swapping can be toggled independently and both modes can be active simultaneously.
-
-
 ## #5 - Dual pistols as two-handed weapons
 
 ### Goal
