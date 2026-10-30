@@ -89,6 +89,8 @@ class CXrApiUDP
 		// it on button presses so a device log can be reconciled against the
 		// spec instead of trusted (#45).
 		const char* GetBools()		{ return m_szBools; }
+		// The last packet exactly as it arrived, for VRVerboseDebug.
+		const char* GetRawPacket()	{ return m_szRaw; }
 		DFLOAT	LastSync()			{ return m_fLastSync; }
 
 	private:
@@ -116,6 +118,7 @@ class CXrApiUDP
 		DFLOAT	m_lStick[2], m_rStick[2];
 		DFLOAT	m_ipd, m_fovX, m_fovY;
 		char	m_szBools[24];
+		char	m_szRaw[512];
 		DBOOL	m_bPrevStickClick;	// for button-edge recentre
 
 		// Recentre point (yaw-inverse quaternion + position).

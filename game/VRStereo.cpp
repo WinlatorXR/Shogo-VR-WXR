@@ -38,6 +38,22 @@ CVRStereo g_VRStereo;
 #define VR_AIM_SMOOTHING	12.0f		// higher = crosshair depth follows faster
 #define VR_FLOOR_RANGE		4000.0f		// how far VRCalibrate looks for the floor
 
+// Every mod-owned copy that rides along with the engine's first-person weapon
+// has to be drawn in the SAME pass as that weapon, or it sorts against the
+// world instead of against the gun.  The engine creates the PV weapon with
+// FLAG_REALLYCLOSE (WeaponModel.cpp), which the renderer uses to draw PV
+// models last and in a compressed depth range, so they never clip into a wall
+// the player is standing against.  A copy without the flag is an ordinary
+// world object: its depth is compared against the world's rather than the
+// gun's, and the result is a lent hand that punches straight through the
+// weapon it is supposed to be holding - which is what the owner saw once the
+// shotgun's hand was finally in the right place.
+//
+// So the lent hands, the split off-hand and the second pistol all carry it.
+// NOT the body avatar or the VRGunModel=1 held gun: those are deliberately
+// world objects and should be occluded by level geometry like anything else.
+#define VR_PV_FLAGS			(FLAG_VISIBLE | FLAG_REALLYCLOSE | FLAG_MODELGOURAUDSHADE)
+
 static int VRRound(DFLOAT f)
 {
 	return (int)floor(f + 0.5f);
@@ -196,6 +212,31 @@ CVRStereo::CVRStereo()
 	m_hHiddenPV				= DNULL;
 	m_hArmlessPV			= DNULL;
 	m_nDumpedWeapons[0] = m_nDumpedWeapons[1] = 0;
+	m_hOffHandGun			= DNULL;
+	m_nOffHandGunId			= -1;
+	m_hSplitPV				= DNULL;
+	m_bPistolSplit			= DFALSE;
+	m_nPistolFireHand		= -1;
+	m_nPistolLastHand		= -1;
+	m_nOffHandAnim			= (DDWORD)-1;
+	m_bOffArmSplit			= DFALSE;
+	m_hOffArmPV				= DNULL;
+	m_hOffArmAnimFor		= DNULL;
+	m_nOffArmFreeCount		= 0;
+	m_hDomHand				= DNULL;
+	m_nDomHandFor			= -1;
+	m_nLoggedWeapon			= -1;
+	m_nNudgeNextTick		= 0;
+	m_nNudgeLastHand		= -1;
+	m_fNextRawLog			= 0.0f;
+	m_hFreeHand				= DNULL;
+	m_bTwoHandGrip			= DFALSE;
+	VEC_INIT(m_vPistolAnchorFix);
+	VEC_INIT(m_vWeaponPoseOrigin);
+	m_bWeaponPoseOrigin		= DFALSE;
+	m_hCameraObj			= DNULL;
+	VEC_INIT(m_vPistolAimF);
+	m_bPistolAimValid		= DFALSE;
 	m_bCaptureHook			= DFALSE;
 
 	m_nCurrentWeaponId		= GUN_NONE;
@@ -241,6 +282,8 @@ CVRStereo::CVRStereo()
 	m_hMovieSurface							= DNULL;
 	memset(&m_rcMovieSrc, 0, sizeof(m_rcMovieSrc));
 	m_bMovieSrcKnown						= DFALSE;
+	m_bMovieFrameStored						= DFALSE;
+	m_bMovieNeedClear						= DFALSE;
 	m_bVirtualHud							= DFALSE;
 	m_bSkipNonCross							= DFALSE;
 	m_bFlatFrame							= DFALSE;
@@ -276,6 +319,14 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtEyeHeightMCA.Init	(pClientDE, "VREyeHeightMCA",	NULL, 10.0f);
 	m_vtHudDepth.Init		(pClientDE, "VRHudDepth",		NULL, 3.5f);
 	m_vtHudScale.Init		(pClientDE, "VRHudScale",		NULL, 1.0f);
+	// 0.6, not 1: settled on device at 4200x2100, where it works out to 0.8 -
+	// the size the owner had reached by hand with VRHudScale.  See
+	// ComputeHudXform for why a strength rather than a size.
+	m_vtHudAutoScale.Init	(pClientDE, "VRHudAutoScale",	NULL, 0.6f);
+
+	// The per-weapon hand diagnostics and the raw packet dump.  Off by default:
+	// they are for working out why something looks wrong, and they write a lot.
+	m_vtVerbose.Init		(pClientDE, "VRVerboseDebug",	NULL, 0.0f);
 	m_vtHudWidth.Init		(pClientDE, "VRHudWidth",		NULL, 60.0f);
 	m_vtHudLayout.Init		(pClientDE, "VRHudLayout",		NULL, 512.0f);
 	m_vtMenuWidth.Init		(pClientDE, "VRMenuWidth",		NULL, 80.0f);
@@ -324,8 +375,116 @@ void CVRStereo::Init(CClientDE* pClientDE)
 	m_vtSyncHold.Init		(pClientDE, "VRSyncHold",		NULL, 1.0f);
 	m_vtFlashTest.Init		(pClientDE, "VRFlashTest",		NULL, 0.0f);
 	m_vtMeleeSens.Init		(pClientDE, "VRMeleeSens",		NULL, 15.0f);
-	m_vtWepSwapPhysical.Init(pClientDE, "PhysicalWepSwap",	NULL, 0.0f);
-	m_vtWepSwapThumb.Init	(pClientDE, "WepSwapThumbstick",	NULL, 1.0f);
+	m_vtWepSwapPhysical.Init(pClientDE, "VRPhysicalWepSwap",	NULL, 0.0f);
+	m_vtWepSwapThumb.Init	(pClientDE, "VRWepSwapThumbstick",	NULL, 1.0f);
+	// Dual pistols (#5).  VRPistolSwapHalves and the four VRPistolOff* trims
+	// exist because which half of the Colt 45 model reads as the "left" pistol,
+	// and how it needs seating in the hand, can only really be judged in the
+	// headset - so they are live CVars, tunable on device without a rebuild,
+	// exactly like the VRHeld* and VRGun* nudges above.
+	m_vtDualPistols.Init	(pClientDE, "VRDualPistols",		NULL, 1.0f);
+	// Settled on device: with this off, each controller held the OTHER hand's
+	// half - which reads correctly until you notice the fingers and thumb are
+	// mirrored.  On swaps only which half is drawn on which object; each one
+	// is still posed from its own controller, so angles are unaffected.
+	m_vtPistolSwapHalves.Init(pClientDE, "VRPistolSwapHalves",	NULL, 1.0f);
+	m_vtPistolOffX.Init		(pClientDE, "VRPistolOffX",			NULL, 0.0f);
+	m_vtPistolOffY.Init		(pClientDE, "VRPistolOffY",			NULL, 0.0f);
+	m_vtPistolOffZ.Init		(pClientDE, "VRPistolOffZ",			NULL, 0.0f);
+	m_vtPistolOffRoll.Init	(pClientDE, "VRPistolOffRoll",		NULL, 0.0f);
+	// Shogo animates the pistols heavily, and the animation moves them a long
+	// way from the model's origin - so placing the object at the hand leaves
+	// the visible pistol somewhere else entirely.  With this on, each copy is
+	// placed so that its own hand's palm node lands on the controller, whatever
+	// the animation is doing.  Off reverts to placing the object origin.
+	// Rolls the off-hand pistol 180 degrees about its barrel.  DEFAULT OFF: the
+	// guess was that half B being a mirrored copy of half A would need the
+	// opposite roll to the gun hand, but on device that is what put the
+	// off-hand pistol upside down - the mirrored geometry and the mirrored hand
+	// pose already cancel out, so the gun hand's own correction is right for
+	// both.  Kept as a switch because it is the one value here that could only
+	// be settled in the headset.  VRPistolOffRoll is the fine trim.
+	m_vtPistolMirror.Init	(pClientDE, "VRPistolMirror",		NULL, 0.0f);
+	m_vtPistolAnchor.Init	(pClientDE, "VRPistolAnchor",		NULL, 1.0f);
+
+	// Free off arm (#7).  The submachine gun's model carries a second arm that
+	// holds nothing and just goes where the animation puts it; on puts it on the
+	// off controller instead.  VROffHandSwap picks which of the model's two arm
+	// groups is the free one - the art names BOTH arms "R_"/"Right_", so which
+	// is which cannot be read from the names and only the headset can settle it.
+	m_vtSplitOffHand.Init	(pClientDE, "VRSplitOffHand",		NULL, 1.0f);
+	m_vtOffHandAuto.Init	(pClientDE, "VROffHandAuto",		NULL, 1.0f);
+	m_vtLentHandSwap.Init	(pClientDE, "VRLentHandSwap",		NULL, 0.0f);
+	// Off: the lent hand's seating is settled (DomHandSeat).  The keys stay in
+	// the build because the same job will come up for the next model that
+	// needs a hand lent to it - VRNudgeKeys 1 brings them back.
+	m_vtNudgeKeys.Init		(pClientDE, "VRNudgeKeys",			NULL, 0.0f);
+	m_vtNudgeStep.Init		(pClientDE, "VRNudgeStep",			NULL, 0.1f);
+	m_vtOffHandSwap.Init	(pClientDE, "VROffHandSwap",		NULL, 0.0f);
+	m_vtOffHandAnchor.Init	(pClientDE, "VROffHandAnchor",		NULL, 1.0f);
+	m_vtOffHandX.Init		(pClientDE, "VROffHandX",			NULL, 0.0f);
+	m_vtOffHandY.Init		(pClientDE, "VROffHandY",			NULL, 0.0f);
+	m_vtOffHandZ.Init		(pClientDE, "VROffHandZ",			NULL, 0.0f);
+	m_vtOffHandRoll.Init	(pClientDE, "VROffHandRoll",		NULL, 0.0f);
+
+	// The shotgun's model draws only its FORE hand, on the pump - the hand that
+	// would be on the rear grip was never modelled, so in VR the gun hangs off
+	// the dominant controller with nothing holding it.  On lends it a hand
+	// borrowed from another weapon's model.
+	m_vtDomHand.Init		(pClientDE, "VRDomHand",			NULL, 1.0f);
+	m_vtDomHandX.Init		(pClientDE, "VRDomHandX",			NULL, 0.0f);
+	// Trims ON TOP of the built-in seating in DomHandSeat - zero means "as
+	// seated on device", not "no offset".
+	m_vtDomHandY.Init		(pClientDE, "VRDomHandY",			NULL, 0.0f);
+	m_vtDomHandZ.Init		(pClientDE, "VRDomHandZ",			NULL, 0.0f);
+	m_vtDomHandRoll.Init	(pClientDE, "VRDomHandRoll",		NULL, 0.0f);
+
+	// The same idea for the other hand: the knife and the squeaky toy are drawn
+	// with one hand only, so the player's off hand is simply not there.  On
+	// lends it an open hand, borrowed the same way.
+	m_vtFreeHand.Init		(pClientDE, "VRFreeHand",			NULL, 1.0f);
+	m_vtFreeHandX.Init		(pClientDE, "VRFreeHandX",			NULL, 0.0f);
+	m_vtFreeHandY.Init		(pClientDE, "VRFreeHandY",			NULL, 0.0f);
+	m_vtFreeHandZ.Init		(pClientDE, "VRFreeHandZ",			NULL, 0.0f);
+	m_vtFreeHandRoll.Init	(pClientDE, "VRFreeHandRoll",		NULL, 0.0f);
+
+	// Whether a hand WE place keeps its forearm.  Default off, and that is not
+	// a cosmetic preference: the arm is modelled running back to the shoulder,
+	// and once the hand is pinned to a controller the arm points wherever that
+	// hand happens to be rotated rather than back towards the player.  On
+	// device it reads as a large slab hanging in mid-air.  Nothing can aim it -
+	// the engine has no way to write a node's transform - so the honest fix is
+	// to draw the hand alone, which is what most VR games do anyway.
+	m_vtHandArm.Init		(pClientDE, "VRHandArm",			NULL, 0.0f);
+
+	// Two-handed grip (#8).  Reach your off hand out along the barrel and pull
+	// its trigger to take hold of the gun with both hands; pull it again to let
+	// go.  The defaults are the thresholds the older proximity two-handed aim
+	// already used, so taking hold feels as it always did - it just no longer
+	// happens by accident.
+	// One switch over everything two-handed, because that is how the owner
+	// wants it offered: the "Two handed weapons" row on the VR Advanced page.
+	// Off, the weapon models draw their own hands and the gun aims from the
+	// dominant hand - V1.0 behaviour - and the two settings below become the
+	// finer, ini-only controls over the halves of the feature.
+	m_vtTwoHandWeapons.Init	(pClientDE, "VRTwoHandWeapons",		NULL, 1.0f);
+	m_vtTwoHandGrip.Init	(pClientDE, "VRTwoHandGrip",		NULL, 1.0f);
+	m_vtGripDist.Init		(pClientDE, "VRGripDist",			NULL, 0.9f);
+	m_vtGripAngle.Init		(pClientDE, "VRGripAngle",			NULL, 25.0f);
+	// How fast the aim swings across to whichever pistol just fired, as a rate
+	// (bigger is faster).  DEFAULT OFF, and it should stay off: each shot
+	// already leaves down its own pistol (ApplyPistolShotPose), so the only
+	// thing this adds is swinging the player's VIEW towards the off hand, which
+	// on device read as the gun-hand pistol being yanked off the controller to
+	// point at whatever the other hand had just shot.  Kept only as an opt-in.
+	m_vtPistolAimSnap.Init	(pClientDE, "VRPistolAimSnap",		NULL, 0.0f);
+	// Moving the shot ORIGIN out to the firing pistol is what makes the off
+	// hand's shots really come from the off hand, but it also puts the origin
+	// an arm's length from the camera, which can place it the wrong side of a
+	// wall in a tight corridor.  On by default, and switchable on device: with
+	// it off, shots keep the game's own origin and only the direction is
+	// per-hand.
+	m_vtPistolShotOrigin.Init(pClientDE, "VRPistolShotOrigin",	NULL, 1.0f);
 	m_vtDirectCapture.Init	(pClientDE, "VRDirectCapture",	NULL, 1.0f);
 	m_vtHeldPitch.Init		(pClientDE, "VRHeldPitch",		NULL, 0.0f);
 	m_vtHeldYaw.Init		(pClientDE, "VRHeldYaw",		NULL, 0.0f);
@@ -478,6 +637,18 @@ void CVRStereo::Term()
 	m_hLaser = DNULL;
 	m_hBody = DNULL;
 	m_hHeldGun = DNULL;
+	m_hOffHandGun = DNULL;
+	m_hSplitPV = DNULL;
+	m_bPistolSplit = DFALSE;
+	m_bOffArmSplit = DFALSE;
+	m_hOffArmPV = DNULL;
+	m_hOffArmAnimFor = DNULL;
+	m_hDomHand = DNULL;
+	m_nDomHandFor = -1;
+	m_hFreeHand = DNULL;
+	m_bTwoHandGrip = DFALSE;
+	m_bWeaponPoseOrigin = DFALSE;
+	m_hCameraObj = DNULL;
 	CloseShared();
 	m_bCrosshairPass = DFALSE;
 	m_pClientDE = DNULL;
@@ -506,6 +677,7 @@ void CVRStereo::BeginFrame(DBOOL bFlat, DBOOL bHudStripAllowed)
 		HideAimHelpers();				// world objects - keep them out of cutscenes
 		HideBody();
 		if (m_hHeldGun) m_pClientDE->SetObjectFlags(m_hHeldGun, 0);
+		if (m_hOffHandGun) m_pClientDE->SetObjectFlags(m_hOffHandGun, 0);
 		m_bHudStrip			= DFALSE;
 		m_nReportViewMode	= SHOGOVR_VIEW_FLAT;
 		m_nReportPoseId		= 0;
@@ -782,6 +954,10 @@ void CVRStereo::ComputeXform(int nEye, DFLOAT fScaleX, DFLOAT fScaleY, DFLOAT fS
 	x.clipB	= (int)m_nEyeH;
 }
 
+// The container width the HUD was sized against - the usual device resolution
+// of 2800x1400.  See ComputeHudXform.
+#define VR_HUD_REF_WIDTH	2800
+
 void CVRStereo::ComputeHudXform(int nEye, DBOOL bVirtualHud, VRXform &x)
 {
 	DFLOAT fVirtW = m_bVirtual2D ? m_fVirtW : (DFLOAT)m_nScreenW;
@@ -814,6 +990,34 @@ void CVRStereo::ComputeHudXform(int nEye, DBOOL bVirtualHud, VRXform &x)
 	else
 	{
 		DFLOAT fHudScale = m_vtHudScale.GetFloat(1.0f);
+
+		// Supersampling (#6) is done by running the WinlatorXR container above
+		// the headset's own resolution, and the HUD does not come along for
+		// the ride: it is 2D art blitted at fixed sizes, so a wider container
+		// changes how much of the view it covers.  Above the reference width
+		// the HUD is scaled back towards the share it had there.
+		//
+		// VRHudAutoScale is how much of that correction to apply: 1 is the
+		// full ratio, 0 switches it off, and anything between is a part of the
+		// way.  It is a strength rather than a size because the right amount is
+		// a matter of taste and only the headset can settle it; VRHudScale
+		// still trims on top.
+		//
+		// The default is 0.6, which the headset settled.  The full ratio was
+		// too much: at 4200 wide it gives 2800/4200 = 0.667, while the owner
+		// had independently arrived at 0.8 by hand.  0.6 of the correction is
+		// exactly 0.8 there (1 + 0.6 * -0.333), so the automatic value now
+		// lands on the hand-picked one and VRHudScale can stay at 1.0 - which
+		// matters, because a player at the reference width must not inherit a
+		// HUD shrunk for somebody else's container.
+		DFLOAT fAuto = m_vtHudAutoScale.GetFloat(1.0f);
+		if (fAuto > 0.0f && m_nScreenW > VR_HUD_REF_WIDTH)
+		{
+			if (fAuto > 1.0f) fAuto = 1.0f;
+			DFLOAT fRatio = (DFLOAT)VR_HUD_REF_WIDTH / (DFLOAT)m_nScreenW;
+			fHudScale *= 1.0f + fAuto * (fRatio - 1.0f);
+		}
+
 		if (fHudScale < 0.1f) fHudScale = 0.1f;
 
 		int nLeft = 0, nRight = 0;
@@ -844,9 +1048,13 @@ void CVRStereo::ComputeHudXform(int nEye, DBOOL bVirtualHud, VRXform &x)
 //	3D
 // ======================================================================= //
 
+// Note: RenderStereo caches hCamera into m_hCameraObj below, which is how
+// AdjustWeaponPose gets at the real camera position - see the note there.
 void CVRStereo::RenderStereo(HLOCALOBJ hCamera, HLOCALOBJ* pObjects, int nObjects,
 							 DFLOAT fBaseFovX, int nMode3D, DBOOL bFootScale)
 {
+	if (hCamera) m_hCameraObj = hCamera;
+
 	if (!m_pClientDE || !hCamera) return;
 
 	CClientDE* pClientDE = m_pClientDE;
@@ -1322,6 +1530,7 @@ void CVRStereo::ShiftMovieToRightHalf()
 			m_pClientDE->DeleteSurface(m_hMovieSurface);
 			m_hMovieSurface = DNULL;
 			m_bMovieSrcKnown = DFALSE;
+			m_bMovieFrameStored = DFALSE;
 		}
 	}
 	if (!m_hMovieSurface)
@@ -1332,8 +1541,46 @@ void CVRStereo::ShiftMovieToRightHalf()
 
 	// Some renderers only accept these blits inside the optimized-2D block.
 	m_pClientDE->StartOptimized2D();
-	// 1) copy the whole window into the scratch surface
-	m_pfnDrawSurfaceToSurface(m_hMovieSurface, hScreen, DNULL, 0, 0);
+
+	// A new movie starts with the PREVIOUS one's two clones still on the
+	// window, and capturing that would store a composite as if it were a movie
+	// frame - and then clone the composite for the rest of the movie.  Blank
+	// the window and do nothing else this pass; by the next one the player will
+	// have drawn a clean centred frame onto black, which is what detection and
+	// the capture below both need.  Costs one black frame per movie.
+	if (m_bMovieNeedClear)
+	{
+		DRect rcClear;
+		rcClear.left = 0; rcClear.top = 0; rcClear.right = (int)nW; rcClear.bottom = (int)nH;
+		m_pfnFillRect(hScreen, &rcClear, m_pClientDE->SetupColor1(0.0f, 0.0f, 0.0f, DFALSE));
+		m_bMovieNeedClear = DFALSE;
+		m_pClientDE->EndOptimized2D();
+		return;
+	}
+
+	// Where the two clones go.  Worked out before the capture because the
+	//    freshness test below has to predict our own output to recognise it.
+	int vwPre = m_rcMovieSrc.right - m_rcMovieSrc.left;
+	int xLPre = (int)nW / 4 - vwPre / 2;
+
+	// 1) copy the whole window into the scratch surface - but ONLY while the
+	//    window is still showing a fresh frame from the movie player.
+	//
+	//    This runs once per engine frame and the movie plays at its own, much
+	//    lower rate, so most passes find the window exactly as the previous
+	//    pass left it: holding our own two clones.  Capturing that and cloning
+	//    it again takes the middle of the pair - the right half of one copy and
+	//    the left half of the other - and draws THAT into both halves, which is
+	//    four part-frames across the window instead of two whole ones (#51).
+	//
+	//    Skipping the capture is all that is needed: the scratch still holds the
+	//    last fresh frame, so the draw below reproduces the same two clones and
+	//    the operation becomes idempotent.
+	if (!m_bMovieFrameStored || MovieFrameIsFresh(hScreen, xLPre, vwPre, nW, nH))
+	{
+		m_pfnDrawSurfaceToSurface(m_hMovieSurface, hScreen, DNULL, 0, 0);
+		m_bMovieFrameStored = DTRUE;
+	}
 
 	// 2) the first frame of each movie: find where the video is, so we can
 	//    draw it into each half with positive coordinates only.
@@ -1445,6 +1692,70 @@ void CVRStereo::DetectMovieSource()
 void CVRStereo::ResetMovieSource()
 {
 	m_bMovieSrcKnown = DFALSE;
+	m_bMovieFrameStored = DFALSE;
+	m_bMovieNeedClear = DTRUE;
+}
+
+// Is the window showing a fresh movie frame, or still the two clones we drew
+// over it last pass?
+//
+// The first attempt at this asked whether the margins beside the video were
+// black, on the grounds that the player leaves them black and our clones cover
+// them.  That is self-defeating: once we have cloned even once, our own output
+// covers those margins for good, so the answer is "stale" forever and the movie
+// freezes on its first frame - which is what put a second, older frame in each
+// half of the window.
+//
+// The reliable question is a different one.  The player only ever draws INSIDE
+// m_rcMovieSrc, so everything outside it is our own output by definition and
+// says nothing about whether a frame has arrived.  Inside it, the window holds
+// either a new frame or - if the player had nothing new this pass - exactly
+// what we drew.  And we know exactly what we drew: the left clone put source
+// pixel (m_rcMovieSrc.left + x - xL) at x.  So predict our own output and
+// compare against it.  Still matching means no new frame.
+//
+// Ambiguity is resolved as "stale", because a wrong "stale" costs one repeated
+// frame while a wrong "fresh" re-clones a composite, which is the bug itself.
+DBOOL CVRStereo::MovieFrameIsFresh(HSURFACE hScreen, int xL, int vw, DDWORD nW, DDWORD nH)
+{
+	if (!m_pClientDE || !hScreen || !m_hMovieSurface) return DTRUE;
+	if (!m_bMovieSrcKnown || vw <= 0) return DTRUE;
+
+	// The band where the player's frame and our left clone overlap: the only
+	// place the two predictions differ in a way we can read.
+	int x0 = m_rcMovieSrc.left;		if (xL      > x0) x0 = xL;
+	int x1 = m_rcMovieSrc.right;	if (xL + vw < x1) x1 = xL + vw;
+	if (x1 - x0 < 8) return DTRUE;
+
+	int nTop = m_rcMovieSrc.top, nBot = m_rcMovieSrc.bottom;
+	if (nBot - nTop < 4) return DTRUE;
+
+	HDECOLOR hBlack = m_pClientDE->SetupColor1(0.0f, 0.0f, 0.0f, DFALSE);
+	HDECOLOR cScr = 0, cSrc = 0;
+
+	int rows[3] = { (nTop * 3 + nBot) / 4, (nTop + nBot) / 2, (nTop + nBot * 3) / 4 };
+	int nSeen = 0, nSame = 0, nLit = 0;
+	int r, i;
+	for (r = 0; r < 3; r++)
+	{
+		int y = rows[r];
+		if (y < 0 || y >= (int)nH) continue;
+		for (i = 1; i <= 8; i++)
+		{
+			int x  = x0 + (x1 - x0) * i / 9;
+			int sx = m_rcMovieSrc.left + (x - xL);		// what our own clone put there
+			if (sx < 0 || sx >= (int)nW) continue;
+			if (m_pClientDE->GetPixel(hScreen,       (DDWORD)x,  (DDWORD)y, &cScr) != DE_OK) continue;
+			if (m_pClientDE->GetPixel(m_hMovieSurface, (DDWORD)sx, (DDWORD)y, &cSrc) != DE_OK) continue;
+			nSeen++;
+			if (cScr == cSrc) nSame++;
+			if (cScr != hBlack || cSrc != hBlack) nLit++;
+		}
+	}
+
+	if (nSeen == 0) return DTRUE;		// nothing to go on
+	if (nLit == 0)  return DFALSE;		// all black either way - tells us nothing, so assume stale
+	return (nSame * 4 >= nSeen * 3) ? DFALSE : DTRUE;
 }
 
 void CVRStereo::InstallHooks()
@@ -2338,6 +2649,29 @@ void CVRStereo::ShotFired()
 	// drop the synthetic trigger so it does not auto-repeat.
 	m_bMeleeTrigger = DFALSE;
 
+	// Dual pistols (#5): this is the one call that happens exactly once per
+	// shot - CWeaponModel::Fire makes it, right where the ammo count comes
+	// down - so this is where the shot is assigned to one of the two pistols.
+	// It has to happen here and not in ApplyPistolShotPose, because Fire()
+	// runs BEFORE the FiredWeapon() block that sends the shot: picking the
+	// hand there would leave this function buzzing the hand that fired the
+	// PREVIOUS shot.  ApplyPistolShotPose and GetMuzzleFlashWorld both read
+	// the answer later in the same frame.
+	int nPistolHand = -1;
+	if (m_bPistolSplit)
+	{
+		nPistolHand = PickPistolFireHand();
+		if (nPistolHand >= 0)
+		{
+			m_nPistolFireHand = nPistolHand;
+			m_nPistolLastHand = nPistolHand;	// so the next shot alternates
+		}
+		// Make UpdateDualPistols restart the off-hand copy's animation this
+		// frame, so the two halves stay in phase even when the game replays the
+		// same fire animation twice running and its index does not change.
+		m_nOffHandAnim = (DDWORD)-1;
+	}
+
 	// A shot was actually fired (an ammo-consuming shot, or a dry click): buzz
 	// the gun hand.  Called once per shot by CWeaponModel::Fire, which is the
 	// one place that decrements the ammo count, so this cannot fire on a
@@ -2346,6 +2680,26 @@ void CVRStereo::ShotFired()
 	// (0 disables the feature entirely, as before).
 	if (!IsControllerActive()) return;
 	if (m_vtHaptics.GetFloat(1.0f) == 0.0f) return;
+
+	// With the pistols split, buzz the hand that actually fired rather than
+	// the dominant one - half the shots come from the other hand.  Hand 0 is
+	// the gun hand, which is the physical right unless LeftHanded is set.
+	if (nPistolHand >= 0)
+	{
+		DBOOL bGunHand = (DBOOL)(nPistolHand == 0);
+		DBOOL bBuzzLeft = m_bLeftHanded ? bGunHand : !bGunHand;
+		if (bBuzzLeft)	m_fHapticL = 2.0f;
+		else			m_fHapticR = 2.0f;
+		return;
+	}
+
+	// #8: holding the gun in both hands means feeling it in both.
+	if (m_bTwoHandGrip)
+	{
+		m_fHapticL = 2.0f;
+		m_fHapticR = 2.0f;
+		return;
+	}
 
 	if (m_bLeftHanded)	m_fHapticL = 2.0f;		// the left trigger is the gun trigger
 	else				m_fHapticR = 2.0f;
@@ -2377,6 +2731,15 @@ DBOOL CVRStereo::VRCommandOn(int nCommand)
 				DFLOAT fNow = m_pClientDE ? m_pClientDE->GetTime() : 0.0f;
 				if ((fNow - m_fMeleeLastFireTime) < 0.25f) return DTRUE;
 				m_bMeleeTrigger = DFALSE;
+			}
+			// Dual pistols (#5): either trigger fires, and the game's own
+			// animation cadence stays the single gate on how fast - which is
+			// what keeps the pair at the stock rate of fire and the server
+			// seeing the stock stream of shots.  Which of the two pistols owns
+			// each shot is settled later, in PickPistolFireHand.
+			if (m_bPistolSplit)
+			{
+				return ((nHeld & SHOGOVR_BTN_FIRE) || (nHeld & SHOGOVR_BTN_LEFT_TRIGGER)) ? DTRUE : DFALSE;
 			}
 			return (nHeld & SHOGOVR_BTN_FIRE) ? DTRUE : DFALSE;
 		}
@@ -2515,6 +2878,33 @@ void CVRStereo::LoadSettingsFile(DBOOL bFirst)
 		GetCurrentDirectoryA(MAX_PATH, szDir);
 		_snprintf(m_szIniPath, sizeof(m_szIniPath) - 1, "%s\\ShogoVR\\ShogoVR.ini", szDir);
 		m_szIniPath[sizeof(m_szIniPath) - 1] = 0;
+	}
+
+	// #50: the two weapon-swap keys shipped without the "VR" prefix that the
+	// [Game] whitelist below insists on, so they were written to the ini and
+	// applied live but silently dropped on the next launch - the setting
+	// reverted every time the game started.  They are VR-prefixed now; carry a
+	// value written under the old name across once, then retire the old key, so
+	// this only ever does anything to an ini from 1.0 or earlier.  Done before
+	// the timestamp is read below, so our own write doesn't look like an edit.
+	if (bFirst)
+	{
+		static const char* const s_szRenamed[][2] =
+		{
+			{ "PhysicalWepSwap",	"VRPhysicalWepSwap"		},
+			{ "WepSwapThumbstick",	"VRWepSwapThumbstick"	},
+			{ 0, 0 }
+		};
+		int iR;
+		for (iR = 0; s_szRenamed[iR][0]; iR++)
+		{
+			char szOld[32], szNew[32];
+			GetPrivateProfileStringA("Game", s_szRenamed[iR][0], "", szOld, sizeof(szOld), m_szIniPath);
+			if (!szOld[0]) continue;			// nothing written under the old name
+			GetPrivateProfileStringA("Game", s_szRenamed[iR][1], "", szNew, sizeof(szNew), m_szIniPath);
+			if (!szNew[0]) WritePrivateProfileStringA("Game", s_szRenamed[iR][1], szOld, m_szIniPath);
+			WritePrivateProfileStringA("Game", s_szRenamed[iR][0], NULL, m_szIniPath);
+		}
 	}
 
 	WIN32_FILE_ATTRIBUTE_DATA fa;
@@ -2754,6 +3144,32 @@ int CVRStereo::PollMenuDirection()
 
 void CVRStereo::GetHandWorld(const DVector &vCamPos, DVector &vPos, DVector &vF, DVector &vU)
 {
+	// Dual pistols (#5): with the pair split there is no shared aim to follow -
+	// each pistol points where its own hand points.  This matters because
+	// m_vAimF also steers the player's view, so taking it here would rotate the
+	// gun-hand pistol to point wherever the view had swung: on device that
+	// showed up as the right pistol whipping round to aim at whatever the LEFT
+	// pistol had just shot, overriding the right controller completely.
+	if (m_bPistolSplit)
+	{
+		GetHandWorldFrom(vCamPos, m_vRightP, m_vRightF, m_vRightU, vPos, vF, vU);
+		return;
+	}
+
+	// The gun hand, pointing wherever the player is aiming - which may be the
+	// two-handed direction rather than the hand's own (see UpdateTwoHanded).
+	GetHandWorldFrom(vCamPos, m_vRightP, m_vAimF, m_vAimU, vPos, vF, vU);
+}
+
+// The same hand-to-world transform for any hand pose.  Split out of
+// GetHandWorld for the dual pistols (#5), whose off-hand copy is placed from
+// the off hand's own pose: the body-frame rotation, world scale, crouch drop
+// and hand-flip correction all have to match the gun hand exactly, so they
+// live here once rather than being copied per hand.
+void CVRStereo::GetHandWorldFrom(const DVector &vCamPos, const DVector &vHandP,
+								 const DVector &vHandF, const DVector &vHandU,
+								 DVector &vPos, DVector &vF, DVector &vU)
+{
 	CClientDE* pClientDE = m_pClientDE;
 
 	DRotation rBody;
@@ -2762,9 +3178,9 @@ void CVRStereo::GetHandWorld(const DVector &vCamPos, DVector &vPos, DVector &vF,
 	pClientDE->GetRotationVectors(&rBody, &bU, &bR, &bF);
 
 	DFLOAT fScale = m_fWorldScaleUsed;
-	VEC_MULSCALAR(vPos, bR, m_vRightP.x * fScale);
-	VEC_MULSCALAR(vT,   bU, m_vRightP.y * fScale);	VEC_ADD(vPos, vPos, vT);
-	VEC_MULSCALAR(vT,   bF, m_vRightP.z * fScale);	VEC_ADD(vPos, vPos, vT);
+	VEC_MULSCALAR(vPos, bR, vHandP.x * fScale);
+	VEC_MULSCALAR(vT,   bU, vHandP.y * fScale);	VEC_ADD(vPos, vPos, vT);
+	VEC_MULSCALAR(vT,   bF, vHandP.z * fScale);	VEC_ADD(vPos, vPos, vT);
 	VEC_ADD(vPos, vPos, vCamPos);
 
 	// Crouch (#20): RenderStereo lowers the camera to fake ducking, but it
@@ -2780,13 +3196,13 @@ void CVRStereo::GetHandWorld(const DVector &vCamPos, DVector &vPos, DVector &vF,
 		VEC_SUB(vPos, vPos, vT);
 	}
 
-	VEC_MULSCALAR(vF, bR, m_vAimF.x);
-	VEC_MULSCALAR(vT, bU, m_vAimF.y);	VEC_ADD(vF, vF, vT);
-	VEC_MULSCALAR(vT, bF, m_vAimF.z);	VEC_ADD(vF, vF, vT);
+	VEC_MULSCALAR(vF, bR, vHandF.x);
+	VEC_MULSCALAR(vT, bU, vHandF.y);	VEC_ADD(vF, vF, vT);
+	VEC_MULSCALAR(vT, bF, vHandF.z);	VEC_ADD(vF, vF, vT);
 
-	VEC_MULSCALAR(vU, bR, m_vAimU.x);
-	VEC_MULSCALAR(vT, bU, m_vAimU.y);	VEC_ADD(vU, vU, vT);
-	VEC_MULSCALAR(vT, bF, m_vAimU.z);	VEC_ADD(vU, vU, vT);
+	VEC_MULSCALAR(vU, bR, vHandU.x);
+	VEC_MULSCALAR(vT, bU, vHandU.y);	VEC_ADD(vU, vU, vT);
+	VEC_MULSCALAR(vT, bF, vHandU.z);	VEC_ADD(vU, vU, vT);
 
 	// Some controllers report the hand upside down, so by default we rotate the
 	// hand/weapon 180 degrees about the barrel (roll) to agree with the hand.
@@ -2805,10 +3221,35 @@ void CVRStereo::AdjustWeaponPose(DVector &vPos, DRotation &rRot, DBOOL bFootScal
 	if (fGunScale < 0.2f) fGunScale = 0.2f;
 	if (fGunScale > 5.0f) fGunScale = 5.0f;
 
-	// vPos arrives as the camera position; the gun goes to the right hand,
-	// pointing where the hand points.
+	// vPos does NOT arrive as the camera position, whatever this function used
+	// to claim: CWeaponModel has already added six offsets to it - the weapon's
+	// own placement and its bob - and those are built from the GUN hand's
+	// rotation.  Measuring a hand from that origin therefore feeds the gun
+	// hand's movement into wherever that hand is put, which showed up on device
+	// two ways: the gun-hand weapon got a doubled dose of its own controller,
+	// and the off-hand pistol (#5) and free arm (#7) were dragged about by the
+	// gun hand even though they belong to the other controller.
+	//
+	// So use the real camera, which the renderer hands us every frame.  Every
+	// hand is then measured from one fixed point and follows only its own
+	// controller.  The weapon's bob is deliberately dropped: in VR the gun's
+	// position comes from the player's hand, and a bob the hand did not make is
+	// exactly the "pulled by the other hand" feeling being removed here.
+	//
+	// If the camera is not known yet, fall back to what we were handed - the
+	// pre-1.0 behaviour, and no worse than it ever was.
+	DVector vOrigin;
+	if (m_hCameraObj)	{ m_pClientDE->GetObjectPos(m_hCameraObj, &vOrigin); }
+	else				{ VEC_COPY(vOrigin, vPos); }
+
+	// Remembered so the mod's own hand-held copies are measured from the very
+	// same point, and so cannot drift apart from the gun hand's model.
+	VEC_COPY(m_vWeaponPoseOrigin, vOrigin);
+	m_bWeaponPoseOrigin = DTRUE;
+
+	// The gun goes to the right hand, pointing where the hand points.
 	DVector vHandPos, vHandF, vHandU, hU, hR, hF, vT;
-	GetHandWorld(vPos, vHandPos, vHandF, vHandU);
+	GetHandWorld(vOrigin, vHandPos, vHandF, vHandU);
 	m_pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
 	m_pClientDE->GetRotationVectors(&rRot, &hU, &hR, &hF);
 
@@ -2816,6 +3257,12 @@ void CVRStereo::AdjustWeaponPose(DVector &vPos, DRotation &rRot, DBOOL bFootScal
 	VEC_MULSCALAR(vT, hR, m_vtGunX.GetFloat(0.0f) * fGunScale);	VEC_ADD(vPos, vPos, vT);
 	VEC_MULSCALAR(vT, hU, m_vtGunY.GetFloat(0.0f) * fGunScale);	VEC_ADD(vPos, vPos, vT);
 	VEC_MULSCALAR(vT, hF, m_vtGunZ.GetFloat(0.0f) * fGunScale);	VEC_ADD(vPos, vPos, vT);
+
+	// Dual pistols (#5): with the pair split, cancel out however far the fire
+	// animation has carried this half's hand from the model's origin, so the
+	// grip stays in the player's hand.  UpdateDualPistols measures it; see
+	// GetPistolAnchorDrift for why it has to be done this way round.
+	if (m_bPistolSplit) VEC_SUB(vPos, vPos, m_vPistolAnchorFix);
 }
 
 void CVRStereo::ScaleWeapon(HLOCALOBJ hWeapon, DBOOL bFootScale)
@@ -3183,6 +3630,14 @@ void CVRStereo::OnExitWorld()
 	}
 	m_hHeldGun = DNULL;
 	m_nHeldGunId = -1;
+	if (m_pClientDE && m_hOffHandGun)
+	{
+		m_pClientDE->DeleteObject(m_hOffHandGun);
+	}
+	m_hOffHandGun = DNULL;
+	m_nOffHandGunId = -1;
+	m_hSplitPV = DNULL;				// the model it pointed at is going away with the world
+	m_bPistolSplit = DFALSE;
 	m_hHiddenPV = DNULL;
 	m_bHaveBody = DFALSE;
 }
@@ -3202,19 +3657,82 @@ void CVRStereo::UpdateTwoHanded()
 	VEC_COPY(m_vAimF, m_vRightF);
 	VEC_COPY(m_vAimU, m_vRightU);
 
-	if (m_vtTwoHand.GetFloat(1.0f) == 0.0f) return;
+	// Dual pistols (#5): two-handed aim means bracing one gun with the other
+	// hand, which is exactly what you are not doing with a pistol in each
+	// hand.  Instead the aim eases across to whichever pistol last fired, so
+	// that the shot, the crosshair and the view agree about which gun is
+	// doing the shooting.  With VRPistolAimSnap at 0 the aim stays on the gun
+	// hand and never swings.
+	if (m_bPistolSplit)
+	{
+		DFLOAT fRate = m_vtPistolAimSnap.GetFloat(0.0f);
+		if (fRate <= 0.0f) return;					// m_vAimF is already the gun hand
+
+		// The pistol the aim should be pointing down: whichever fired last,
+		// falling back to the gun hand before the first shot.
+		const DVector& vWant = (m_nPistolLastHand == 1) ? m_vLeftF : m_vRightF;
+
+		if (!m_bPistolAimValid)
+		{
+			VEC_COPY(m_vPistolAimF, vWant);
+			m_bPistolAimValid = DTRUE;
+		}
+		else
+		{
+			// Exponential ease, framerate independent.
+			DFLOAT fDt = m_pClientDE ? m_pClientDE->GetFrameTime() : 0.016666f;
+			if (fDt < 0.0f || fDt > 0.25f) fDt = 0.016666f;
+			DFLOAT fT = fRate * fDt;
+			if (fT > 1.0f) fT = 1.0f;
+
+			DVector vDelta;
+			VEC_SUB(vDelta, vWant, m_vPistolAimF);
+			VEC_MULSCALAR(vDelta, vDelta, fT);
+			VEC_ADD(m_vPistolAimF, m_vPistolAimF, vDelta);
+			// Braces matter: the VEC_ macros expand to a block, so an
+			// unbraced if/else around one will not compile.
+			DFLOAT fMag = VEC_MAG(m_vPistolAimF);
+			if (fMag > 0.0001f)	{ VEC_MULSCALAR(m_vPistolAimF, m_vPistolAimF, 1.0f / fMag); }
+			else				{ VEC_COPY(m_vPistolAimF, vWant); }
+		}
+
+		VEC_COPY(m_vAimF, m_vPistolAimF);
+		return;
+	}
+	m_bPistolAimValid = DFALSE;
+
+	// #8: with the grip deliberately taken, the hands steer the gun whatever
+	// the thresholds below would have said - the player has told us they are
+	// holding it, so it must not slip out of two-handed aim just because they
+	// moved their hands a little.
+	DBOOL bHeldGrip = m_bTwoHandGrip;
+
+	// The submachine gun is held one-handed on the owner's instruction, so it
+	// never aims from two hands at all - not by grip, not by proximity.
+	if (m_nCurrentWeaponId == GUN_MAC10_ID) return;
+
+	// The off hand is only on the gun once the grip has been taken.  While it
+	// is away on its own controller - #7's free hand, or a two-handed weapon
+	// waiting for the player to take hold - the line between the hands means
+	// nothing, so V1.0's proximity aim must not steer off it: the gun would
+	// swing towards a hand that is visibly not holding it, and #8's trigger
+	// toggle would be pointless, proximity having already done the job.
+	if (!bHeldGrip && m_bOffArmSplit) return;
+
+	if (!bHeldGrip && m_vtTwoHand.GetFloat(1.0f) == 0.0f) return;
 	if (!(m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE) || !(m_nCtrlFlags & SHOGOVR_CTRL_LEFT_POSE)) return;
 
 	DVector vD;
 	VEC_SUB(vD, m_vLeftP, m_vRightP);
 	DFLOAT fDist = VEC_MAG(vD);
-	if (fDist < 0.12f || fDist > 0.9f) return;		// metres
+	if (fDist < 0.0001f) return;
+	if (!bHeldGrip && (fDist < 0.12f || fDist > 0.9f)) return;		// metres
 
 	DVector vDir;
 	VEC_MULSCALAR(vDir, vD, 1.0f / fDist);
 	DFLOAT fCos = VEC_DOT(vDir, m_vRightF);
 	DFLOAT fNeed = bWas ? 0.766f : 0.906f;			// enter within 25 degrees, stay within 40
-	if (fCos < fNeed) return;
+	if (!bHeldGrip && fCos < fNeed) return;
 
 	m_bTwoHanded = DTRUE;
 	VEC_COPY(m_vAimF, vDir);
@@ -3317,12 +3835,1414 @@ int CVRStereo::SetArmNodesHidden(HLOCALOBJ hObj, DBOOL bHide)
 	return nCount;
 }
 
+// Dual pistols (#5) -------------------------------------------------------
+//
+// The Colt 45's first-person model (Models\PV_Weapons\Colt45_pv.abc) is a
+// SINGLE object holding BOTH pistols and BOTH of Sanjuro's hands, as two
+// mirrored halves - see the "Weapon 13" lines in ShogoVR_models.txt, where the
+// second half repeats the first with a "3" appended or a different number.
+// On a flat screen that is fine, the pair sits in the corner together; in VR
+// each pistol belongs in its own hand.  Making a second copy of the model
+// would show FOUR pistols, so instead the halves are split by part name: half
+// A stays on the game's own model (which AdjustWeaponPose already puts in the
+// gun hand) and half B is shown on one copy of the same model, posed to the
+// off hand.  The art is the game's own and is not modified.
+//
+// Both halves are listed by name on purpose.  An "ends in 3" rule would miss
+// the second pistol's own parts - cube4, bool6, cyl4 and extru4 - and hiding
+// the wrong set leaves half a pistol floating in each hand.  Only geometry is
+// listed: each half's nulls (null1/null2/null8/null9 and the bare "1"/"4")
+// draw nothing and may parent each other, so they are left alone.
+static const char* const s_PistolHalfA[] =
+{
+	"palm",			"pointer_base",		"pointer_middle",	"pointer_tip",
+	"pinky_base",	"pinky_middle",		"pinky_tip",
+	"ring_base",	"ring_middle",		"ring_tip",
+	"middle_base",	"middle_middle",	"middle_tip",
+	"thumb_base",	"thumb_middle",		"thumb_tip",
+	"cube1",		"bool3",			"cyl1",				"extru1",	0
+};
+static const char* const s_PistolHalfB[] =
+{
+	"palm3",		"pointer_base3",	"pointer_middle3",	"pointer_tip3",
+	"pinky_base3",	"pinky_middle3",	"pinky_tip3",
+	"ring_base3",	"ring_middle3",		"ring_tip3",
+	"middle_base3",	"middle_middle3",	"middle_tip3",
+	"thumb_base3",	"thumb_middle3",	"thumb_tip3",
+	"cube4",		"bool6",			"cyl4",				"extru4",	0
+};
+
+// How many parts each half must contribute before the split is trusted.  A
+// replacement Colt45_pv.abc from some other mod will not carry these names,
+// and showing somebody half a pistol is worse than showing them the stock
+// pair - so art that does not match falls back to the game's own behaviour.
+#define VR_PISTOL_HALF_MIN	12
+
+// 0 = the gun-hand half, 1 = the off-hand half, -1 = part of neither.
+static int PistolHalfIndex(const char* szName)
+{
+	int i;
+	for (i = 0; s_PistolHalfA[i]; i++) if (stricmp(szName, s_PistolHalfA[i]) == 0) return 0;
+	for (i = 0; s_PistolHalfB[i]; i++) if (stricmp(szName, s_PistolHalfB[i]) == 0) return 1;
+	return -1;
+}
+
+int CVRStereo::SetHalfNodesHidden(HLOCALOBJ hObj, int nHalf, DBOOL bHide)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (PistolHalfIndex(szName) != nHalf) continue;
+		m_pClientDE->SetModelNodeHideStatus(hObj, szName, bHide);
+		nCount++;
+	}
+	return nCount;
+}
+
+int CVRStereo::CountHalfNodes(HLOCALOBJ hObj, int nHalf)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (PistolHalfIndex(szName) == nHalf) nCount++;
+	}
+	return nCount;
+}
+
+
+
+// ======================================================================= //
+//	Free off arm (#7)
+// ======================================================================= //
+
+// The submachine gun's first-person model (weapon 18) is 50 parts in three
+// blocks: the arm holding the gun, the gun, and a second arm that holds
+// nothing and simply goes wherever the animation puts it.  That second arm is
+// the one this feature moves onto the off controller.  The gun block is never
+// touched.
+//
+// Taken verbatim from a device dump (Docs/GameLogs/2026-10-28/ShogoVR_models.txt),
+// and the names have three traps in them:
+//
+//  - "R-thumb_middle" uses a HYPHEN where every sibling uses an underscore.
+//    It is an art typo and it is in both arms.  Do not "correct" it.
+//  - The second arm mixes suffixes: R_Arm3, but Right_Palm4 and 4 on every
+//    finger.  A single-suffix rule finds the fingers and loses the arm, which
+//    would leave a severed hand in the air.
+//  - BOTH arms are named "R_"/"Right_" - the art reuses the right-hand naming
+//    for the left hand - so which one is free cannot be read from the names.
+//    That is what VROffHandSwap is for.
+static const char* const s_OffArmA[] =
+{
+	"R_Arm",			"Right_Palm",
+	"R_pointer_base",	"R_pointer_middle",		"R_pointer_tip",
+	"R_pinky_base",		"R_pinky_middle",		"R_pinky_tip",
+	"R_ring_base",		"R_ring_middle",		"R_ring_tip",
+	"R_middle_base",	"R_middle_middle",		"R_middle_tip",
+	"R_thumb_base",		"R-thumb_middle",		"R_thumb_tip",	0
+};
+static const char* const s_OffArmB[] =
+{
+	"R_Arm3",			"Right_Palm4",
+	"R_pointer_base4",	"R_pointer_middle4",	"R_pointer_tip4",
+	"R_pinky_base4",	"R_pinky_middle4",		"R_pinky_tip4",
+	"R_ring_base4",		"R_ring_middle4",		"R_ring_tip4",
+	"R_middle_base4",	"R_middle_middle4",		"R_middle_tip4",
+	"R_thumb_base4",	"R-thumb_middle4",		"R_thumb_tip4",	0
+};
+
+// The palm each group hangs its hand on, for anchoring to the controller, and
+// the forearm that runs back from it (see VRHandArm).
+#define VR_OFFARM_PALM(g)	(((g) == 0) ? "Right_Palm" : "Right_Palm4")
+#define VR_OFFARM_ARM(g)	(((g) == 0) ? "R_Arm" : "R_Arm3")
+
+// How many parts a group must contribute before the split is trusted, so a
+// replacement model that does not carry these names keeps stock behaviour
+// rather than losing an arm.
+#define VR_OFFARM_MIN	12
+
+// 0 = the first arm group, 1 = the second, -1 = part of neither (the gun).
+static int OffArmIndex(const char* szName)
+{
+	int i;
+	for (i = 0; s_OffArmA[i]; i++) if (stricmp(szName, s_OffArmA[i]) == 0) return 0;
+	for (i = 0; s_OffArmB[i]; i++) if (stricmp(szName, s_OffArmB[i]) == 0) return 1;
+	return -1;
+}
+
+// ======================================================================= //
+//	Two-handed grip (#8)
+// ======================================================================= //
+
+// The hand groups of the two-handed on-foot weapons, and ONLY the hands - no
+// gun parts.  That matters: weapons 15, 16, 17 and 19 have gun parts called
+// cube1, cyl1 and extru1, which are also Colt 45 PISTOL parts, so the #5 tables
+// cannot be reused here without classifying half a rifle as a hand.
+//
+// Two naming conventions appear across the on-foot weapons and both are
+// listed: 15, 16, 17 and 19 use palm/palm3, while 14 and 18 use the
+// Right_Palm/R_Arm form already tabulated for #7 (hyphen typo and mixed
+// suffixes included).  Which group is the off hand cannot be read from either -
+// every hand in this art is named "R_"/"Right_" or carries no side at all - so
+// group 1 is assumed and VROffHandSwap moves it.
+static const char* const s_HandA[] =
+{
+	"palm",			"pointer_base",		"pointer_middle",	"pointer_tip",
+	"pinky_base",	"pinky_middle",		"pinky_tip",
+	"ring_base",	"ring_middle",		"ring_tip",
+	"middle_base",	"middle_middle",	"middle_tip",
+	"thumb_base",	"thumb_middle",		"thumb_tip",	0
+};
+static const char* const s_HandB[] =
+{
+	"palm3",		"pointer_base3",	"pointer_middle3",	"pointer_tip3",
+	"pinky_base3",	"pinky_middle3",	"pinky_tip3",
+	"ring_base3",	"ring_middle3",		"ring_tip3",
+	"middle_base3",	"middle_middle3",	"middle_tip3",
+	"thumb_base3",	"thumb_middle3",	"thumb_tip3",	0
+};
+
+// The forearms of the assault-rifle family (15, 16, 17 and the TOW).  The
+// hand tables above stop at the wrist, so moving a hand to the off controller
+// used to leave its forearm behind, floating on the gun with nothing attached
+// - which is what the owner saw on the rifle, both grenade launchers and the
+// TOW.  The submachine-gun family needs none of this: its arms are named
+// R_Arm/R_Arm3 and the hand tables already carry them.
+//
+// Hidden as one set rather than per hand, because the pairing is not stable:
+// 15/16/17 put tetra5 with the first hand and tetra4 with the second, and the
+// TOW has them the other way round.  tetra1 and cube1_3 always belong to the
+// first, tetra3 and cube1_4 to the second, but since the mod hides forearms by
+// default anyway (VRHandArm), hiding all six together is both simpler and what
+// the one-handed pose wants.  Taking the grip stands the whole split down, so
+// the model draws its own arms again and they come back.
+static const char* const s_RifleArm[] =
+{
+	"tetra1", "tetra3", "tetra4", "tetra5", "cube1_3", "cube1_4", 0
+};
+
+static DBOOL IsRifleArmNode(const char* szName)
+{
+	int i;
+	for (i = 0; s_RifleArm[i]; i++) if (stricmp(szName, s_RifleArm[i]) == 0) return DTRUE;
+	return DFALSE;
+}
+
+// 0 = first hand group, 1 = second, -1 = not a hand.  Covers both conventions.
+static int HandGroupIndex(const char* szName)
+{
+	int i;
+	for (i = 0; s_HandA[i];   i++) if (stricmp(szName, s_HandA[i])   == 0) return 0;
+	for (i = 0; s_HandB[i];   i++) if (stricmp(szName, s_HandB[i])   == 0) return 1;
+	for (i = 0; s_OffArmA[i]; i++) if (stricmp(szName, s_OffArmA[i]) == 0) return 0;
+	for (i = 0; s_OffArmB[i]; i++) if (stricmp(szName, s_OffArmB[i]) == 0) return 1;
+	return -1;
+}
+
+int CVRStereo::SetRifleArmsHidden(HLOCALOBJ hObj, DBOOL bHide)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (!IsRifleArmNode(szName)) continue;
+		m_pClientDE->SetModelNodeHideStatus(hObj, szName, bHide);
+		nCount++;
+	}
+	return nCount;
+}
+
+int CVRStereo::SetHandGroupHidden(HLOCALOBJ hObj, int nGroup, DBOOL bHide)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (HandGroupIndex(szName) != nGroup) continue;
+		m_pClientDE->SetModelNodeHideStatus(hObj, szName, bHide);
+		nCount++;
+	}
+	return nCount;
+}
+
+int CVRStereo::CountHandGroupNodes(HLOCALOBJ hObj, int nGroup)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (HandGroupIndex(szName) == nGroup) nCount++;
+	}
+	return nCount;
+}
+
+// Anchor on whichever palm this model actually has: a model carries one naming
+// convention or the other, never both.
+DBOOL CVRStereo::GetHandGroupDrift(HLOCALOBJ hObj, int nGroup, DVector &vDrift)
+{
+	if (GetNodeDrift(hObj, (nGroup == 0) ? "palm" : "palm3", vDrift)) return DTRUE;
+	return GetNodeDrift(hObj, VR_OFFARM_PALM(nGroup), vDrift);
+}
+
+// The weapons the player may take hold of in both hands.  Two exclusions, and
+// they are different in kind:
+//
+//  - The Colt 45 is two separate guns, one per hand (#5), never one gun in two
+//    hands, so the off trigger goes on firing the off pistol as before.
+//  - The submachine gun is held one-handed on the owner's instruction, even
+//    though the art has a second hand for it.  Its off hand is #7's free hand
+//    and stays free; see HasSplitOffHand below, which is why these are two
+//    lists and not one.
+//
+// Mech weapons are out of scope - the various mechs hold them differently.
+static DBOOL IsTwoHandWeapon(int nWeaponId)
+{
+	return (DBOOL)(nWeaponId == GUN_SHOTGUN_ID		||
+				   nWeaponId == GUN_ASSAULTRIFLE_ID	||
+				   nWeaponId == GUN_ENERGYGRENADE_ID ||
+				   nWeaponId == GUN_KATOGRENADE_ID	||
+				   nWeaponId == GUN_TOW_ID);
+}
+
+// The weapons whose redundant hand is taken off the gun and given to the off
+// controller.  Every grip-capable weapon, plus the submachine gun, which gets
+// the free hand (#7) but never the grip (#8).
+static DBOOL HasSplitOffHand(int nWeaponId)
+{
+	return (DBOOL)(IsTwoHandWeapon(nWeaponId) || nWeaponId == GUN_MAC10_ID);
+}
+
+// Which of the two hand groups is further along the barrel?
+//
+// This replaces guessing per weapon.  The part names cannot say: the device
+// log shows the assault rifle family carrying palm/palm3 and the submachine
+// gun carrying Right_Palm/Right_Palm4, and the two families order their hands
+// OPPOSITELY - keeping group A holds the SMG correctly but leaves the rifle
+// gripped by its fore-end with nothing on the trigger.
+//
+// So measure it instead.  Both palms are read off the posed model and
+// projected onto the gun's own forward axis; the one further forward is the
+// fore hand, which is the one the off hand should take.  Whatever is left is
+// the trigger hand and belongs on the gun.  That rule needs no table and
+// holds for any model, including ones this mod has never seen.
+//
+// Returns -1 when it cannot tell - a weapon with only one hand group (the
+// shotgun), or two that sit level - and the caller keeps VROffHandSwap.
+int CVRStereo::ForwardHandGroup(HLOCALOBJ hObj)
+{
+	if (!m_pClientDE || !hObj) return -1;
+
+	DVector vA, vB;
+	if (!GetNodeDrift(hObj, "palm",  vA) && !GetNodeDrift(hObj, "Right_Palm",  vA)) return -1;
+	if (!GetNodeDrift(hObj, "palm3", vB) && !GetNodeDrift(hObj, "Right_Palm4", vB)) return -1;
+
+	DRotation rRot;
+	DVector vU, vR, vF;
+	m_pClientDE->GetObjectRotation(hObj, &rRot);
+	m_pClientDE->GetRotationVectors(&rRot, &vU, &vR, &vF);
+
+	DFLOAT fA = VEC_DOT(vA, vF);
+	DFLOAT fB = VEC_DOT(vB, vF);
+	if ((DFLOAT)fabs(fA - fB) < 0.5f) return -1;		// level enough to be a coin toss
+	return (fA > fB) ? 0 : 1;
+}
+
+// May the player take hold right now?  The off hand has to be out along the
+// barrel - the same geometry the old proximity two-handed aim used.
+DBOOL CVRStereo::CanEngageGrip()
+{
+	if (!(m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE)) return DFALSE;
+	if (!(m_nCtrlFlags & SHOGOVR_CTRL_LEFT_POSE))  return DFALSE;
+
+	DVector vD;
+	VEC_SUB(vD, m_vLeftP, m_vRightP);
+	DFLOAT fDist = VEC_MAG(vD);
+	if (fDist < 0.12f) return DFALSE;					// hands together is not a grip
+	if (fDist > m_vtGripDist.GetFloat(0.9f)) return DFALSE;
+
+	DVector vDir;
+	VEC_MULSCALAR(vDir, vD, 1.0f / fDist);
+	DFLOAT fNeed = (DFLOAT)cos(VR_DEG2RAD(m_vtGripAngle.GetFloat(25.0f)));
+	return (DBOOL)(VEC_DOT(vDir, m_vRightF) >= fNeed);
+}
+
+// The off trigger, pressed while a two-handed weapon is in hand and the player
+// is alive.  Letting go never needs the gesture - only taking hold does - so a
+// grip can always be dropped however the hands happen to be held.
+void CVRStereo::ToggleTwoHandGrip()
+{
+	if (m_vtTwoHandWeapons.GetFloat(1.0f) == 0.0f) return;
+	if (m_vtTwoHandGrip.GetFloat(1.0f) == 0.0f) return;
+	if (!IsTwoHandWeapon(m_nCurrentWeaponId)) return;
+
+	if (m_bTwoHandGrip)
+	{
+		m_bTwoHandGrip = DFALSE;
+		Log("VR grip: let go - one hand");
+		return;
+	}
+	if (CanEngageGrip())
+	{
+		m_bTwoHandGrip = DTRUE;
+		Log("VR grip: took hold - two hands");
+	}
+}
+
+int CVRStereo::SetArmGroupHidden(HLOCALOBJ hObj, int nGroup, DBOOL bHide)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (OffArmIndex(szName) != nGroup) continue;
+		m_pClientDE->SetModelNodeHideStatus(hObj, szName, bHide);
+		nCount++;
+	}
+	return nCount;
+}
+
+int CVRStereo::CountArmGroupNodes(HLOCALOBJ hObj, int nGroup)
+{
+	if (!m_pClientDE || !hObj) return 0;
+	int nCount = 0;
+	HMODELNODE hNode = INVALID_MODEL_NODE;
+	while (m_pClientDE->GetNextModelNode(hObj, hNode, &hNode) == LT_OK)
+	{
+		char szName[64];
+		szName[0] = 0;
+		m_pClientDE->GetModelNodeName(hObj, hNode, szName, sizeof(szName));
+		if (OffArmIndex(szName) == nGroup) nCount++;
+	}
+	return nCount;
+}
+
+// The off arm is only free while the gun is idle or firing.  Reloading drives
+// that same hand to the magazine well to seat the clip, and select/deselect
+// swing the whole model - holding the hand on the controller through any of
+// those would tear the animation apart, so it is handed back for the duration.
+//
+// CWeaponModel looks its animations up by name, so the mod can do the same and
+// needs no engine change.  The free list is resolved once per model; anything
+// NOT on it counts as busy, so an animation we have not accounted for degrades
+// to stock behaviour rather than to an arm torn out of it.
+DBOOL CVRStereo::OffArmHandIsFree(HLOCALOBJ hPVModel)
+{
+	if (!m_pClientDE || !hPVModel) return DFALSE;
+
+	if (m_hOffArmAnimFor != hPVModel)
+	{
+		m_hOffArmAnimFor   = hPVModel;
+		m_nOffArmFreeCount = 0;
+
+		static const char* const s_szFree[] =
+		{ "Idle_1", "Idle_2", "Fire", "Fire2", "Start_fire", "End_fire", "Fire_zoom", 0 };
+
+		int i;
+		for (i = 0; s_szFree[i] && m_nOffArmFreeCount < 8; i++)
+		{
+			HMODELANIM hAnim = m_pClientDE->GetAnimIndex(hPVModel, (char*)s_szFree[i]);
+			if (hAnim != (HMODELANIM)-1) m_nOffArmFreeAnim[m_nOffArmFreeCount++] = (DDWORD)hAnim;
+		}
+		Log("VR off arm: %d of the gun's animations leave the arm free", m_nOffArmFreeCount);
+	}
+
+	if (m_nOffArmFreeCount <= 0) return DFALSE;
+
+	DDWORD nAnim = m_pClientDE->GetModelAnimation(hPVModel);
+	int i;
+	for (i = 0; i < m_nOffArmFreeCount; i++) if (m_nOffArmFreeAnim[i] == nAnim) return DTRUE;
+
+	// Not a free animation - but GetModelAnimation reports which animation the
+	// model is ON, not whether it is still playing, and nothing resets it when a
+	// one-shot finishes.  After a reload the index therefore sits on "Reload"
+	// until the game next sets another one, which it does when the player fires:
+	// that is why the arm stayed attached after reloading until a shot was taken.
+	// A non-looping animation that has finished is no longer using the hand, so
+	// take it back as soon as the model says it is done.
+	if (m_pClientDE->GetModelPlaybackState(hPVModel) & MS_PLAYDONE) return DTRUE;
+	return DFALSE;
+}
+
+
+// Some weapons are drawn with only one hand, so the other one is simply not
+// there in VR: the shotgun (14) draws its FORE hand on the pump and never the
+// hand on the rear grip, while the knife (22) and the squeaky toy (21) draw
+// only the hand holding them.  On a flat screen nobody notices; in the headset
+// a controller with nothing on it is very obvious.
+//
+// So lend them one, borrowed from the submachine gun's model, which carries
+// both a hand closed round a grip and an open one.  The borrowed hand is posed
+// to its controller exactly as the weapon itself is - same origin, same scale -
+// so the two move together, and the weapon's own art is never touched.
+//
+// Borrowed from a DIFFERENT model, so there is no animation of the equipped
+// weapon to follow: it is pinned to one looping idle at creation and left
+// there.  (A copy left to free-run tumbles - see #5.)
+// Where the shotgun's lent hand sits on the weapon.
+//
+// This was tuned twice and transferred neither time, and the reason is the
+// frame it was measured in.  The offset used to be applied along the HAND's
+// axes, which rotate with the player's wrist - so a set of numbers found with
+// the desktop tester's synthetic poses landed somewhere else entirely once a
+// real wrist held the gun at a real angle.  The device screenshots show the
+// hand thrown clear of the weapon, which is exactly what an eight-unit offset
+// does when the frame it is measured in turns.
+//
+// That also explains the "impossible" asymmetry in the earlier numbers: Y
+// disagreed between the handedness modes by 1.4 because the two modes hold the
+// wrist differently, not because anything was wrong with the seating.
+//
+// So the offset is applied along the GUN's axes now (PoseLentHandOnGun), where
+// it is a property of the model and nothing else.  A hand on a grip does not
+// move when the wrist turns - the whole weapon turns with it - so a value
+// found once holds in both handedness modes, on desktop and on device alike.
+//
+// It is NOT zero, though, and the controller screenshots say why.  The
+// controller sits slightly forward of the shotgun's rear grip and slightly
+// above it - which is simply how a player holds a controller whose own grip
+// points down and back from the tracked point.  So the lent hand needs a
+// short step back along the barrel and a short step down to land on the
+// weapon's handle.  Two numbers, in the gun's frame, shared by both modes.
+//
+// These are those two numbers, confirmed on device and on desktop in both
+// handedness modes with no trim on top - which is the evidence that the gun's
+// frame was the right one to measure in.  Three rounds of tuning in the
+// hand's frame never produced a pair that held anywhere but where it was
+// found.
+void CVRStereo::DomHandSeat(DFLOAT &fX, DFLOAT &fY, DFLOAT &fZ)
+{
+	// One value for both hands, and the device logs are why.
+	//
+	// The grip is a fixed point on the model, so in the gun's frame it can only
+	// have one address - unless the gun's frame itself flips with handedness,
+	// which was the obvious suspect.  It does not.  Two bases logged on device
+	// minutes apart, one mode each, both have R pointing the same way:
+	//
+	//   left-handed    R  0.971  0.173 -0.166
+	//   right-handed   R  0.973 -0.210  0.090
+	//
+	// So the two tuned values, 19.65 units apart along gun-X, put the hand on
+	// OPPOSITE SIDES of the weapon. They cannot both be the grip, and the
+	// right-handed one is the verified one.
+	//
+	// The left-handed value was measured while the lent hand was still the
+	// wrong-handed mesh - a right hand on a left wrist, thumb on the wrong side
+	// - so it was being dragged around to fix an appearance that no position
+	// could fix. The donor fix cured that; this undoes the damage it caused.
+	fX = 0.0f;		// on the weapon's centreline
+	fY = -2.0f;		// down from the controller, onto the handle
+	fZ = -3.0f;		// and back along the barrel, off the receiver
+}
+
+// Seats a lent hand on the weapon: position from the player's CONTROLLER,
+// orientation from the GUN.
+//
+// The controller overlay settled this. Shown next to the weapon on device, the
+// dominant controller sits on the shotgun's receiver - the mod poses the gun to
+// the hand, so the grip is already where the player's hand is, by construction.
+// The lent hand therefore belongs at the controller and needs no offset at all;
+// every value tuned for it was pushing it OFF a grip it would otherwise have
+// landed on, which is why the hand kept appearing beside the weapon.
+//
+// That is the whole of this bug. Three rounds of tuning produced ever-larger
+// offsets because each one was correcting for the previous frame choice rather
+// than for anything real, and a large offset is exactly what turns a small
+// pose difference into a hand floating in mid-air.
+//
+// Orientation still comes from the gun, which was the good half of the earlier
+// attempt: a hand gripping a weapon turns with the weapon, not with the wrist.
+// The offsets remain as a trim in the gun's frame and default to zero.
+void CVRStereo::PoseLentHandOnGun(HLOCALOBJ hObj, int nGroup, HLOCALOBJ hGun,
+								  const DVector &vHandPos,
+								  DFLOAT fX, DFLOAT fY, DFLOAT fZ, DFLOAT fRoll)
+{
+	CClientDE* pClientDE = m_pClientDE;
+	if (!pClientDE || !hObj || !hGun) return;
+
+	SetAllNodesHidden(hObj, DTRUE);
+	SetHandGroupHidden(hObj, nGroup, DFALSE);
+
+	DRotation rGun;
+	DVector gU, gR, gF;
+	pClientDE->GetObjectRotation(hGun, &rGun);
+	pClientDE->GetRotationVectors(&rGun, &gU, &gR, &gF);
+
+	DRotation rRot = rGun;
+	if (fRoll != 0.0f) pClientDE->EulerRotateZ(&rRot, VR_DEG2RAD(fRoll));
+
+	DFLOAT fScale = m_fGunScaleUsed;
+	if (fScale < 0.2f) fScale = 0.2f;
+	if (fScale > 5.0f) fScale = 5.0f;
+
+	DVector vPos, vT;
+	VEC_COPY(vPos, vHandPos);
+	VEC_MULSCALAR(vT, gR, fX * fScale);		VEC_ADD(vPos, vPos, vT);
+	VEC_MULSCALAR(vT, gU, fY * fScale);		VEC_ADD(vPos, vPos, vT);
+	VEC_MULSCALAR(vT, gF, fZ * fScale);		VEC_ADD(vPos, vPos, vT);
+
+	DVector vScale;
+	VEC_SET(vScale, fScale, fScale, fScale);
+	pClientDE->SetObjectRotation(hObj, &rRot);
+	pClientDE->SetObjectScale(hObj, &vScale);
+	pClientDE->SetObjectPos(hObj, &vPos);
+
+	DVector vDrift;
+	if (GetNodeDrift(hObj, (nGroup == 0) ? "palm" : "palm3", vDrift))
+	{
+		DVector vFixed;
+		VEC_SUB(vFixed, vPos, vDrift);
+		pClientDE->SetObjectPos(hObj, &vFixed);
+	}
+
+	pClientDE->SetObjectFlags(hObj, VR_PV_FLAGS);
+}
+
+// Which half of the donor to lend: the dominant hand, or the off hand.
+int CVRStereo::LentHandGroup(DBOOL bDominant)
+{
+	int nDom = m_bLeftHanded ? 0 : 1;
+	if (m_vtLentHandSwap.GetFloat(0.0f) != 0.0f) nDom = 1 - nDom;
+	return bDominant ? nDom : (1 - nDom);
+}
+
+HLOCALOBJ CVRStereo::BorrowHand(const DVector &vCamPos)
+{
+	if (!m_pClientDE) return DNULL;
+
+	// The donor is the Colt 45, and the reason is handedness.  The engine
+	// cannot mirror a model, so a right hand stays a right hand however it is
+	// posed - a left-handed player needs a genuine left hand to exist in some
+	// model's art.  The submachine gun was the first donor tried and it does
+	// carry two hands, but they are a gripping hand and an OPEN one (it holds
+	// a magazine), so lending the second to a left-handed player put a flat,
+	// open hand on the gun.  The Colt 45 is the one on-foot model with a
+	// mirrored PAIR of hands both closed round a pistol grip - that is the
+	// whole point of #5 - which is exactly what a rear grip wants, in either
+	// handedness.
+	char* szModel = GetPVModelName(GUN_COLT45_ID);
+	char* szSkin  = GetPVModelSkin(GUN_COLT45_ID);
+	if (!szModel || !szSkin) return DNULL;
+
+	ObjectCreateStruct theStruct;
+	INIT_OBJECTCREATESTRUCT(theStruct);
+	theStruct.m_ObjectType = OT_MODEL;
+	strncpy(theStruct.m_Filename, szModel, sizeof(theStruct.m_Filename) - 1);
+	strncpy(theStruct.m_SkinName, szSkin,  sizeof(theStruct.m_SkinName)  - 1);
+	theStruct.m_Flags = VR_PV_FLAGS;
+	VEC_COPY(theStruct.m_Pos, vCamPos);
+
+	HLOCALOBJ hObj = m_pClientDE->CreateObject(&theStruct);
+	if (!hObj) return DNULL;
+
+	HMODELANIM hAnim = m_pClientDE->GetAnimIndex(hObj, "Idle_1");
+	if (hAnim == (HMODELANIM)-1) hAnim = m_pClientDE->GetAnimIndex(hObj, "Idle_2");
+	if (hAnim != (HMODELANIM)-1)
+	{
+		m_pClientDE->SetModelAnimation(hObj, (DDWORD)hAnim);
+		m_pClientDE->SetModelLooping(hObj, DTRUE);
+		m_pClientDE->ResetModelAnimation(hObj);
+	}
+	return hObj;
+}
+
+// Show one arm group of a borrowed hand and put it on the given controller.
+void CVRStereo::PoseBorrowedHand(HLOCALOBJ hObj, int nGroup, const DVector &vHandP,
+								 const DVector &vHandF, const DVector &vHandU,
+								 const DVector &vCamPos,
+								 DFLOAT fTX, DFLOAT fTY, DFLOAT fTZ, DFLOAT fRoll)
+{
+	CClientDE* pClientDE = m_pClientDE;
+	if (!pClientDE || !hObj) return;
+
+	// SetHandGroupHidden covers both naming conventions, so this works for the
+	// Colt 45's palm/palm3 as well as the R_Arm/Right_Palm models.  The Colt 45
+	// halves carry no forearm at all - only nulls, hand and pistol - so there
+	// is nothing here to hide for VRHandArm, and nothing to look like a slab.
+	SetAllNodesHidden(hObj, DTRUE);
+	SetHandGroupHidden(hObj, nGroup, DFALSE);
+
+	// The same origin the weapon itself was measured from - the real camera,
+	// not the weapon's bobbed position; see AdjustWeaponPose.
+	DVector vOrigin;
+	if (m_bWeaponPoseOrigin)	{ VEC_COPY(vOrigin, m_vWeaponPoseOrigin); }
+	else						{ VEC_COPY(vOrigin, vCamPos); }
+
+	DVector vPos, vF, vU, hU, hR, hF, vT;
+	GetHandWorldFrom(vOrigin, vHandP, vHandF, vHandU, vPos, vF, vU);
+
+	DRotation rRot;
+	pClientDE->AlignRotation(&rRot, &vF, &vU);
+	if (fRoll != 0.0f) pClientDE->EulerRotateZ(&rRot, VR_DEG2RAD(fRoll));
+	pClientDE->GetRotationVectors(&rRot, &hU, &hR, &hF);
+
+	DFLOAT fScale = m_fGunScaleUsed;
+	if (fScale < 0.2f) fScale = 0.2f;
+	if (fScale > 5.0f) fScale = 5.0f;
+
+	VEC_MULSCALAR(vT, hR, (m_vtGunX.GetFloat(0.0f) + fTX) * fScale);	VEC_ADD(vPos, vPos, vT);
+	VEC_MULSCALAR(vT, hU, (m_vtGunY.GetFloat(0.0f) + fTY) * fScale);	VEC_ADD(vPos, vPos, vT);
+	VEC_MULSCALAR(vT, hF, (m_vtGunZ.GetFloat(0.0f) + fTZ) * fScale);	VEC_ADD(vPos, vPos, vT);
+
+	DVector vScale;
+	VEC_SET(vScale, fScale, fScale, fScale);
+	pClientDE->SetObjectRotation(hObj, &rRot);
+	pClientDE->SetObjectScale(hObj, &vScale);
+	pClientDE->SetObjectPos(hObj, &vPos);
+
+	DVector vDrift;
+	if (GetNodeDrift(hObj, (nGroup == 0) ? "palm" : "palm3", vDrift))
+	{
+		DVector vFixed;
+		VEC_SUB(vFixed, vPos, vDrift);
+		pClientDE->SetObjectPos(hObj, &vFixed);
+	}
+
+	pClientDE->SetObjectFlags(hObj, VR_PV_FLAGS);
+}
+
+// The shotgun's missing hand on the rear grip - group 0, the one modelled
+// closed round a grip.
+void CVRStereo::UpdateDominantHand(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos)
+{
+	if (!m_pClientDE) return;
+
+	DBOOL bWant = m_bAimByHand && IsControllerActive() &&
+				  nWeaponId == GUN_SHOTGUN_ID &&
+				  m_vtDomHand.GetFloat(1.0f) != 0.0f &&
+				  m_vtGunModel.GetFloat(1.0f) == 0.0f &&
+				  m_vtGunArms.GetFloat(1.0f) != 0.0f &&
+				  hPVModel != DNULL &&
+				  (m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE);
+
+	if (!bWant)
+	{
+		if (m_hDomHand) m_pClientDE->SetObjectFlags(m_hDomHand, 0);
+		return;
+	}
+
+	if (!m_hDomHand)
+	{
+		m_hDomHand = BorrowHand(vCamPos);
+		if (!m_hDomHand) return;
+		m_nDomHandFor = nWeaponId;
+		Log("VR borrowed hand: lent the shotgun a hand for its rear grip");
+	}
+
+	// Which half of the Colt 45 is the player's right hand: half B, by #5's
+	// settled VRPistolSwapHalves=1, which keeps half B with the gun hand - and
+	// the gun hand is the right one when right-handed.  So the dominant hand
+	// is half B right-handed and half A left-handed.  VRLentHandSwap flips the
+	// pair if that reading proves backwards on device; the pose needs no
+	// change either way, since m_vRight* is already the dominant hand.
+	// Where the player's dominant hand actually is - measured from the real
+	// camera, the same origin the weapon itself was posed from.
+	DVector vOrigin;
+	if (m_bWeaponPoseOrigin)	{ VEC_COPY(vOrigin, m_vWeaponPoseOrigin); }
+	else						{ VEC_COPY(vOrigin, vCamPos); }
+
+	DVector vHandPos, vHandF, vHandU;
+	GetHandWorldFrom(vOrigin, m_vRightP, m_vRightF, m_vRightU, vHandPos, vHandF, vHandU);
+
+	DFLOAT fSeatX, fSeatY, fSeatZ;
+	DomHandSeat(fSeatX, fSeatY, fSeatZ);
+	PoseLentHandOnGun(m_hDomHand, LentHandGroup(DTRUE), hPVModel, vHandPos,
+					  fSeatX + m_vtDomHandX.GetFloat(0.0f), fSeatY + m_vtDomHandY.GetFloat(0.0f),
+					  fSeatZ + m_vtDomHandZ.GetFloat(0.0f), m_vtDomHandRoll.GetFloat(0.0f));
+}
+
+// Weapons drawn with only the hand that holds them, leaving the player's off
+// hand empty: the knife and the squeaky toy.  They get group 1, the open hand,
+// since there is nothing in it.
+//
+// Deliberately a short list rather than "any weapon with one hand": the shotgun
+// also has one hand, but it is the FORE hand, so what it is missing is the
+// dominant one - handled above.  Which hand a model is missing cannot be read
+// from the names (both are called R_/Right_), so each weapon is listed after
+// being looked at.
+static DBOOL WeaponLacksOffHand(int nWeaponId)
+{
+	return (DBOOL)(nWeaponId == GUN_TANTO_ID || nWeaponId == GUN_SQUEAKYTOY_ID);
+}
+
+// Whose off hand the player sees: one lent from the Colt 45, or the weapon's
+// own spare hand moved onto the controller.
+//
+// Weapons that never modelled an off hand always borrow one.  Left-handed, so
+// does everything else - because the model's spare hand is a fixed-handedness
+// mesh and nothing can mirror it, so moving it onto the player's right wrist
+// puts a left hand there with the thumb on the wrong side.  The lent hand is a
+// mirrored pair and can simply supply the other one.
+//
+// Right-handed the weapon's own hand is used, as before: it is the real art,
+// it already looks right, and it is verified.
+DBOOL CVRStereo::UseLentOffHand(int nWeaponId)
+{
+	if (WeaponLacksOffHand(nWeaponId)) return DTRUE;
+	return (DBOOL)(m_bLeftHanded && HasSplitOffHand(nWeaponId));
+}
+
+void CVRStereo::UpdateFreeOffHand(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos)
+{
+	if (!m_pClientDE) return;
+
+	// A weapon that HAS a spare hand only shows a lent one while that spare
+	// hand is actually off the gun.  UpdateOffArm has already decided that for
+	// this frame - it stands the split down for a reload, for a weapon switch
+	// and for a taken grip - so following m_bOffArmSplit means the lent hand
+	// disappears at exactly the moments the model takes its hands back, rather
+	// than hanging in the air through the reload and through two-handed mode.
+	//
+	// Weapons that never had a spare hand (knife, squeaky toy) have no split to
+	// follow and keep their lent hand throughout.
+	DBOOL bWant = m_bAimByHand && IsControllerActive() &&
+				  UseLentOffHand(nWeaponId) &&
+				  (!HasSplitOffHand(nWeaponId) || m_bOffArmSplit) &&
+				  m_vtFreeHand.GetFloat(1.0f) != 0.0f &&
+				  m_vtGunModel.GetFloat(1.0f) == 0.0f &&
+				  m_vtGunArms.GetFloat(1.0f) != 0.0f &&
+				  hPVModel != DNULL &&
+				  (m_nCtrlFlags & SHOGOVR_CTRL_LEFT_POSE);
+
+	if (!bWant)
+	{
+		if (m_hFreeHand) m_pClientDE->SetObjectFlags(m_hFreeHand, 0);
+		return;
+	}
+
+	if (!m_hFreeHand)
+	{
+		m_hFreeHand = BorrowHand(vCamPos);
+		if (!m_hFreeHand) return;
+		Log("VR borrowed hand: lent weapon %d an off hand", nWeaponId);
+	}
+
+	// The off hand is the other half, by the same argument.
+	PoseBorrowedHand(m_hFreeHand, LentHandGroup(DFALSE), m_vLeftP, m_vLeftF, m_vLeftU, vCamPos,
+					 m_vtFreeHandX.GetFloat(0.0f), m_vtFreeHandY.GetFloat(0.0f),
+					 m_vtFreeHandZ.GetFloat(0.0f), m_vtFreeHandRoll.GetFloat(0.0f));
+}
+
+// Called every frame from UpdateHeldGun, straight after the dual pistols, and
+// shares the same mod-owned copy object: the two features are different weapons
+// so they can never both want it.  Purely visual - nothing here touches firing,
+// ammo, aim or anything the server sees.
+void CVRStereo::UpdateOffArm(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos)
+{
+	CClientDE* pClientDE = m_pClientDE;
+	if (!pClientDE) return;
+
+	DBOOL bSwap     = (DBOOL)(m_vtOffHandSwap.GetFloat(0.0f) != 0.0f);
+
+	// Measured beats configured: the fore hand is whichever is further along
+	// the barrel, so the trigger hand is the one left on the gun.  Falls back
+	// to VROffHandSwap when the model gives no answer.
+	if (m_vtOffHandAuto.GetFloat(1.0f) != 0.0f)
+	{
+		int nFwd = ForwardHandGroup(hPVModel);
+		if (nFwd >= 0) bSwap = (DBOOL)(nFwd == 0);
+	}
+
+	int   nKeepGrp  = bSwap ? 1 : 0;	// stays on the game's model, holding the gun
+	int   nMoveGrp  = bSwap ? 0 : 1;	// goes to the off controller
+
+	// Hiding the arms (VRGunArms) and moving one of them are the same decision
+	// made two ways, so the split stands down when the player has asked for no
+	// arms at all.  VRGunModel=1 replaces the model with the third-person held
+	// gun, which has no second arm.
+	// With the grip taken the off hand belongs on the GUN, so the split stands
+	// down and the model draws both hands itself - which is the whole point of
+	// two-handed mode.
+	DBOOL bWant = m_bAimByHand && IsControllerActive() &&
+				  HasSplitOffHand(nWeaponId) &&
+				  !m_bTwoHandGrip &&
+				  m_vtTwoHandWeapons.GetFloat(1.0f) != 0.0f &&
+				  m_vtSplitOffHand.GetFloat(1.0f) != 0.0f &&
+				  m_vtGunModel.GetFloat(1.0f) == 0.0f &&
+				  m_vtGunArms.GetFloat(1.0f) != 0.0f &&
+				  !m_bPistolSplit &&
+				  hPVModel != DNULL &&
+				  (m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE) &&
+				  (m_nCtrlFlags & SHOGOVR_CTRL_LEFT_POSE);
+
+	if (bWant && CountHandGroupNodes(hPVModel, nMoveGrp) < VR_OFFARM_MIN)
+	{
+		static DBOOL s_bWarned = DFALSE;
+		if (!s_bWarned)
+		{
+			s_bWarned = DTRUE;
+			Log("VR off arm: weapon %d has no recognisable off-hand group - leaving it alone.", nWeaponId);
+		}
+		bWant = DFALSE;
+	}
+
+	// The reload borrows the hand back.  Accepted behaviour, not a fault.
+	if (bWant && !OffArmHandIsFree(hPVModel)) bWant = DFALSE;
+
+	if (!bWant)
+	{
+		// Give the arm back to the model we took it from - and only to that
+		// one, since the game builds a new model on every weapon switch.
+		if (m_hOffArmPV && m_hOffArmPV == hPVModel && m_vtGunModel.GetFloat(1.0f) == 0.0f)
+		{
+			SetHandGroupHidden(hPVModel, 0, DFALSE);
+			SetHandGroupHidden(hPVModel, 1, DFALSE);
+			SetRifleArmsHidden(hPVModel, DFALSE);
+		}
+		// Putting the weapon away, or losing a controller, drops the grip too:
+		// it must never be possible to leave it stuck on.
+		if (!IsTwoHandWeapon(nWeaponId) ||
+			!(m_nCtrlFlags & SHOGOVR_CTRL_LEFT_POSE) ||
+			!(m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE)) m_bTwoHandGrip = DFALSE;
+		m_hOffArmPV = DNULL;
+		if (m_bOffArmSplit && m_hOffHandGun) pClientDE->SetObjectFlags(m_hOffHandGun, 0);
+		m_bOffArmSplit = DFALSE;
+		return;
+	}
+
+	// Re-applied every frame: a weapon switch brings a new model with nothing
+	// hidden on it.
+	SetHandGroupHidden(hPVModel, nMoveGrp, DTRUE);
+	SetHandGroupHidden(hPVModel, nKeepGrp, DFALSE);
+	SetRifleArmsHidden(hPVModel, (DBOOL)(m_vtHandArm.GetFloat(0.0f) == 0.0f));
+	m_hOffArmPV = hPVModel;
+
+	// Left-handed the spare hand still comes OFF the gun, but it is not what
+	// the player gets to see - UpdateFreeOffHand lends a correctly handed one
+	// instead (UseLentOffHand).  m_bOffArmSplit stays set either way: the off
+	// hand is away from the weapon, which is what suppresses proximity aim.
+	if (UseLentOffHand(nWeaponId))
+	{
+		if (m_hOffHandGun) pClientDE->SetObjectFlags(m_hOffHandGun, 0);
+		m_bOffArmSplit = DTRUE;
+		return;
+	}
+
+	// Our own copy of the very same model, showing ONLY the arm we moved.
+	if (!m_hOffHandGun || m_nOffHandGunId != nWeaponId)
+	{
+		if (m_hOffHandGun) pClientDE->DeleteObject(m_hOffHandGun);
+		m_hOffHandGun = DNULL;
+
+		char* szModel = GetPVModelName(nWeaponId);
+		char* szSkin  = GetPVModelSkin(nWeaponId);
+		if (!szModel || !szSkin) { m_bOffArmSplit = DFALSE; return; }
+
+		ObjectCreateStruct theStruct;
+		INIT_OBJECTCREATESTRUCT(theStruct);
+		theStruct.m_ObjectType = OT_MODEL;
+		strncpy(theStruct.m_Filename, szModel, sizeof(theStruct.m_Filename) - 1);
+		strncpy(theStruct.m_SkinName, szSkin,  sizeof(theStruct.m_SkinName)  - 1);
+		theStruct.m_Flags = VR_PV_FLAGS;
+		VEC_COPY(theStruct.m_Pos, vCamPos);
+		m_hOffHandGun = pClientDE->CreateObject(&theStruct);
+		if (!m_hOffHandGun) { m_bOffArmSplit = DFALSE; return; }
+		m_nOffHandGunId = nWeaponId;
+		m_nOffHandAnim  = (DDWORD)-1;
+	}
+	SetAllNodesHidden(m_hOffHandGun, DTRUE);
+	SetHandGroupHidden(m_hOffHandGun, nMoveGrp, DFALSE);
+	if (m_vtHandArm.GetFloat(0.0f) == 0.0f)
+		pClientDE->SetModelNodeHideStatus(m_hOffHandGun, (char*)VR_OFFARM_ARM(nMoveGrp), DTRUE);
+
+	// Follow the game's animation, for the same reason the pistols do: nothing
+	// else drives the copy, and a free-running one tumbles.
+	DDWORD nAnim = pClientDE->GetModelAnimation(hPVModel);
+	if (nAnim != (DDWORD)-1 && nAnim != m_nOffHandAnim)
+	{
+		pClientDE->SetModelAnimation(m_hOffHandGun, nAnim);
+		pClientDE->SetModelLooping(m_hOffHandGun, pClientDE->GetModelLooping(hPVModel));
+		pClientDE->ResetModelAnimation(m_hOffHandGun);
+		m_nOffHandAnim = nAnim;
+	}
+
+	// The same origin the gun hand was measured from - which is the real camera,
+	// not the weapon's bobbed position; see AdjustWeaponPose.  That is what
+	// keeps this arm following its own controller instead of being dragged
+	// around by the gun hand.
+	DVector vOrigin;
+	if (m_bWeaponPoseOrigin)	{ VEC_COPY(vOrigin, m_vWeaponPoseOrigin); }
+	else						{ VEC_COPY(vOrigin, vCamPos); }
+
+	DVector vHandPos, vHandF, vHandU, hU, hR, hF, vT;
+	GetHandWorldFrom(vOrigin, m_vLeftP, m_vLeftF, m_vLeftU, vHandPos, vHandF, vHandU);
+
+	DRotation rRot;
+	pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
+	DFLOAT fRoll = m_vtOffHandRoll.GetFloat(0.0f);
+	if (fRoll != 0.0f) pClientDE->EulerRotateZ(&rRot, VR_DEG2RAD(fRoll));
+	pClientDE->GetRotationVectors(&rRot, &hU, &hR, &hF);
+
+	DFLOAT fScale = m_fGunScaleUsed;
+	if (fScale < 0.2f) fScale = 0.2f;
+	if (fScale > 5.0f) fScale = 5.0f;
+
+	VEC_MULSCALAR(vT, hR, (m_vtGunX.GetFloat(0.0f) + m_vtOffHandX.GetFloat(0.0f)) * fScale);	VEC_ADD(vHandPos, vHandPos, vT);
+	VEC_MULSCALAR(vT, hU, (m_vtGunY.GetFloat(0.0f) + m_vtOffHandY.GetFloat(0.0f)) * fScale);	VEC_ADD(vHandPos, vHandPos, vT);
+	VEC_MULSCALAR(vT, hF, (m_vtGunZ.GetFloat(0.0f) + m_vtOffHandZ.GetFloat(0.0f)) * fScale);	VEC_ADD(vHandPos, vHandPos, vT);
+
+	DVector vScale;
+	VEC_SET(vScale, fScale, fScale, fScale);
+	pClientDE->SetObjectRotation(m_hOffHandGun, &rRot);
+	pClientDE->SetObjectScale(m_hOffHandGun, &vScale);
+	pClientDE->SetObjectPos(m_hOffHandGun, &vHandPos);
+
+	// Put this arm's palm on the controller, whatever the animation has done
+	// with it.  Only one object moves here, so unlike the pistols there is no
+	// second placement for it to disagree with.
+	if (m_vtOffHandAnchor.GetFloat(1.0f) != 0.0f)
+	{
+		DVector vDrift;
+		if (GetHandGroupDrift(m_hOffHandGun, nMoveGrp, vDrift))
+		{
+			DVector vFixed;
+			VEC_SUB(vFixed, vHandPos, vDrift);
+			pClientDE->SetObjectPos(m_hOffHandGun, &vFixed);
+		}
+	}
+
+	pClientDE->SetObjectFlags(m_hOffHandGun, VR_PV_FLAGS);
+	m_bOffArmSplit = DTRUE;
+}
+
+// Called every frame from UpdateHeldGun, before it touches the third-person
+// held gun.  Decides whether the split is on, keeps each half in the right
+// hand, and tidies up the moment the weapon changes.
+//
+// Note on ordering: the shell calls CWeaponModel::UpdateWeaponModel BEFORE
+// UpdateHeldGun, so m_bPistolSplit is always one frame old by the time
+// VRCommandOn, ApplyPistolShotPose and GetMuzzleFlashWorld read it - and
+// UpdateTwoHanded, earlier still, reads the same stale value.  They therefore
+// all agree with each other, and the only effect is one frame either side of a
+// weapon change, which is not perceptible.  Leaving it alone avoids reordering
+// Monolith's own update for no real gain.  (m_nCurrentWeaponId is one frame
+// stale in exactly the same way, which is what the melee gesture has always
+// worked from.)
+void CVRStereo::UpdateDualPistols(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos)
+{
+	CClientDE* pClientDE = m_pClientDE;
+	if (!pClientDE) return;
+
+	// Which half reads as the left-hand pistol is a judgement that can only
+	// really be made in the headset, so it is a live CVar, not a constant.
+	DBOOL bSwap    = (DBOOL)(m_vtPistolSwapHalves.GetFloat(1.0f) != 0.0f);
+
+	// The two halves are a mirrored PAIR - one left hand, one right - so which
+	// half belongs on which controller flips with handedness.  VRPistolSwapHalves
+	// was settled right-handed; left-handed the gun hand is the player's left,
+	// so it wants the other half.  Without this the thumbs point the wrong way
+	// round, which is exactly how it looked on device.
+	//
+	// Same reasoning as LentHandGroup, and the same trap: a value tuned in one
+	// handedness mode is only half the answer.
+	if (m_bLeftHanded) bSwap = (DBOOL)!bSwap;
+
+	int   nGunHalf = bSwap ? 1 : 0;
+	int   nOffHalf = bSwap ? 0 : 1;
+
+	// The split only makes sense while the mod is posing the first-person
+	// model by hand and both controllers are tracking.  VRGunModel=1 replaces
+	// that model with the third-person held gun, which is a single pickup
+	// model with nothing to split, so there the stock behaviour is kept.
+	DBOOL bWant = m_bAimByHand && IsControllerActive() &&
+				  nWeaponId == GUN_COLT45_ID &&
+				  m_vtDualPistols.GetFloat(1.0f) != 0.0f &&
+				  m_vtGunModel.GetFloat(1.0f) == 0.0f &&
+				  hPVModel != DNULL &&
+				  (m_nCtrlFlags & SHOGOVR_CTRL_RIGHT_POSE) &&
+				  (m_nCtrlFlags & SHOGOVR_CTRL_LEFT_POSE);
+
+	if (bWant &&
+		(CountHalfNodes(hPVModel, 0) < VR_PISTOL_HALF_MIN ||
+		 CountHalfNodes(hPVModel, 1) < VR_PISTOL_HALF_MIN))
+	{
+		static DBOOL s_bWarned = DFALSE;
+		if (!s_bWarned)
+		{
+			s_bWarned = DTRUE;
+			Log("VR dual pistols: Colt45_pv.abc has no recognisable halves - keeping the stock pair.");
+		}
+		bWant = DFALSE;
+	}
+
+	if (!bWant)
+	{
+		// Put back anything we hid - but only on the model we hid it on (the
+		// game makes a new one on every weapon switch, and an old handle may
+		// already be gone), and only while the first-person model is the one
+		// on show.  With VRGunModel=1 the held-gun path above has just hidden
+		// every node on purpose, so there the right move is to touch nothing.
+		if (m_hSplitPV && m_hSplitPV == hPVModel && m_vtGunModel.GetFloat(1.0f) == 0.0f)
+		{
+			SetHalfNodesHidden(hPVModel, 0, DFALSE);
+			SetHalfNodesHidden(hPVModel, 1, DFALSE);
+		}
+		m_hSplitPV = DNULL;
+		if (m_hOffHandGun) pClientDE->SetObjectFlags(m_hOffHandGun, 0);
+		m_bPistolSplit = DFALSE;
+		m_nPistolFireHand = -1;
+		m_nPistolLastHand = -1;
+		m_nOffHandAnim    = (DDWORD)-1;
+		m_bPistolAimValid = DFALSE;
+		VEC_INIT(m_vPistolAnchorFix);
+		return;
+	}
+
+	// Re-applied every frame for the same reason SetArmNodesHidden is: a new
+	// model arrives with each weapon switch, with nothing hidden on it.
+	SetHalfNodesHidden(hPVModel, nOffHalf, DTRUE);
+	SetHalfNodesHidden(hPVModel, nGunHalf, DFALSE);
+	m_hSplitPV = hPVModel;
+
+	// Our own copy of the very same model, showing only the other half.
+	if (!m_hOffHandGun || m_nOffHandGunId != nWeaponId)
+	{
+		if (m_hOffHandGun) pClientDE->DeleteObject(m_hOffHandGun);
+		m_hOffHandGun = DNULL;
+
+		char* szModel = GetPVModelName(nWeaponId);
+		char* szSkin  = GetPVModelSkin(nWeaponId);
+		if (!szModel || !szSkin) { m_bPistolSplit = DFALSE; return; }
+
+		ObjectCreateStruct theStruct;
+		INIT_OBJECTCREATESTRUCT(theStruct);
+		theStruct.m_ObjectType = OT_MODEL;
+		strncpy(theStruct.m_Filename, szModel, sizeof(theStruct.m_Filename) - 1);
+		strncpy(theStruct.m_SkinName, szSkin,  sizeof(theStruct.m_SkinName)  - 1);
+		theStruct.m_Flags = VR_PV_FLAGS;
+		VEC_COPY(theStruct.m_Pos, vCamPos);
+		m_hOffHandGun = pClientDE->CreateObject(&theStruct);
+		if (!m_hOffHandGun) { m_bPistolSplit = DFALSE; return; }
+		m_nOffHandGunId = nWeaponId;
+		m_nOffHandAnim  = (DDWORD)-1;
+	}
+	SetHalfNodesHidden(m_hOffHandGun, nGunHalf, DTRUE);
+	SetHalfNodesHidden(m_hOffHandGun, nOffHalf, DFALSE);
+
+	// The copy is its own object, so NOTHING drives its animation: left to
+	// itself it free-runs on whatever animation it was created on, while the
+	// game plays the real weapon's idle, fire and reload animations on its own
+	// model.  Shogo swings the pistols a long way in those animations, so an
+	// unsynchronised copy reads as the off-hand pistol tumbling and rolling on
+	// its own, never settling - which is exactly what it did on device.  Follow
+	// the game's model instead, so both halves are always mid-way through the
+	// same animation.
+	//
+	// There is no frame-level animation control in the interface (no
+	// SetModelPlaybackState), so the two are kept in phase by restarting the
+	// copy whenever the game's model changes animation.  Both then tick at the
+	// same rate from the same frame.  The alternating fire animations change
+	// index on every shot, so a shot resynchronises them for free; ShotFired
+	// forces it as well, for the case where the same fire animation replays.
+	DDWORD nAnim = pClientDE->GetModelAnimation(hPVModel);
+	if (nAnim != (DDWORD)-1 && nAnim != m_nOffHandAnim)
+	{
+		pClientDE->SetModelAnimation(m_hOffHandGun, nAnim);
+		pClientDE->SetModelLooping(m_hOffHandGun, pClientDE->GetModelLooping(hPVModel));
+		pClientDE->ResetModelAnimation(m_hOffHandGun);
+		m_nOffHandAnim = nAnim;
+	}
+
+	// The gun-hand model is the game's own, and AdjustWeaponPose is what
+	// places it - so measure its drift here, where the handle is known to be
+	// live, and let AdjustWeaponPose apply it next frame.  (It runs earlier in
+	// the frame than this does; one frame of lag in a figure that is
+	// remeasured every frame is not visible.)
+	DVector vGunDrift;
+	DBOOL   bGunAnchor = GetPistolAnchorDrift(hPVModel, nGunHalf, vGunDrift);
+
+	// Posed from the off hand's OWN direction, not the aim direction: each
+	// pistol points where its own hand points.  The player's view still
+	// follows the gun hand - see UpdateTwoHanded and ApplyHeadTracking.
+	// Measured from whatever origin AdjustWeaponPose was handed for the gun hand
+	// earlier this frame, NOT from the camera - see the note there.  Starting
+	// the two pistols from different origins is what put one of them a few units
+	// further from its controller than the other.
+	DVector vOrigin;
+	if (m_bWeaponPoseOrigin)	{ VEC_COPY(vOrigin, m_vWeaponPoseOrigin); }
+	else						{ VEC_COPY(vOrigin, vCamPos); }
+
+	DVector vHandPos, vHandF, vHandU, hU, hR, hF, vT;
+	GetHandWorldFrom(vOrigin, m_vLeftP, m_vLeftF, m_vLeftU, vHandPos, vHandF, vHandU);
+
+	// Optional extra 180-degree roll about the barrel, off by default - see the
+	// VRPistolMirror note in Init for why the mirrored half does NOT need one.
+	if (m_vtPistolMirror.GetFloat(0.0f) != 0.0f) { VEC_MULSCALAR(vHandU, vHandU, -1.0f); }
+
+	DRotation rRot;
+	pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
+	DFLOAT fRoll = m_vtPistolOffRoll.GetFloat(0.0f);
+	if (fRoll != 0.0f) pClientDE->EulerRotateZ(&rRot, VR_DEG2RAD(fRoll));
+	pClientDE->GetRotationVectors(&rRot, &hU, &hR, &hF);
+
+	// The same scale ScaleWeapon gave the game's own model, so the two pistols
+	// always match each other.
+	DFLOAT fScale = m_fGunScaleUsed;
+	if (fScale < 0.2f) fScale = 0.2f;
+	if (fScale > 5.0f) fScale = 5.0f;
+
+	// The gun-hand nudge AdjustWeaponPose applies, plus the off-hand-only trim.
+	VEC_MULSCALAR(vT, hR, (m_vtGunX.GetFloat(0.0f) + m_vtPistolOffX.GetFloat(0.0f)) * fScale);	VEC_ADD(vHandPos, vHandPos, vT);
+	VEC_MULSCALAR(vT, hU, (m_vtGunY.GetFloat(0.0f) + m_vtPistolOffY.GetFloat(0.0f)) * fScale);	VEC_ADD(vHandPos, vHandPos, vT);
+	VEC_MULSCALAR(vT, hF, (m_vtGunZ.GetFloat(0.0f) + m_vtPistolOffZ.GetFloat(0.0f)) * fScale);	VEC_ADD(vHandPos, vHandPos, vT);
+
+	DVector vScale;
+	VEC_SET(vScale, fScale, fScale, fScale);
+	pClientDE->SetObjectRotation(m_hOffHandGun, &rRot);
+	pClientDE->SetObjectScale(m_hOffHandGun, &vScale);
+	pClientDE->SetObjectPos(m_hOffHandGun, &vHandPos);
+
+	// Shogo animates the pistols a long way from the model's origin, so
+	// placing the object at the hand is not enough - the visible pistol ends
+	// up wherever the animation has carried it.  Measure where this half's
+	// palm has actually landed and shift the object by the opposite amount, so
+	// the grip sits in the player's hand through the whole animation.
+	DVector vOffDrift;
+	DBOOL   bOffAnchor = GetPistolAnchorDrift(m_hOffHandGun, nOffHalf, vOffDrift);
+
+	// Anchoring is all-or-nothing across the pair.  Each half is anchored on its
+	// OWN hand node ("palm" for one, "palm3" for the other), so if one of those
+	// lookups fails that pistol alone keeps the animation's offset while the
+	// other has it taken out - and the two sit at visibly different distances
+	// from their controllers.  Correcting one but not the other is worse than
+	// correcting neither, so if either fails, both go unanchored and the pair
+	// stays symmetric.
+	if (!bGunAnchor || !bOffAnchor)
+	{
+		VEC_INIT(vGunDrift);
+		VEC_INIT(vOffDrift);
+	}
+	VEC_COPY(m_vPistolAnchorFix, vGunDrift);
+
+	{
+		DVector vFixed;
+		VEC_SUB(vFixed, vHandPos, vOffDrift);
+		pClientDE->SetObjectPos(m_hOffHandGun, &vFixed);
+	}
+
+	// Diagnostics for the two pistols sitting differently against their
+	// controllers.  Printed a few frames in and then again once things have
+	// settled, rather than on the very first frame, because the gun hand's
+	// anchor is applied by AdjustWeaponPose a frame later than it is measured.
+	//
+	// Everything needed to see where an asymmetry comes from is here: the raw
+	// controller poses, the two hand targets after the body-frame transform,
+	// the two anchor drifts, and where both objects actually ended up.  With
+	// the UDP tester sending a fixed pose, these numbers are constant and the
+	// two sides should differ only by the controllers' own separation.
+	{
+		static int s_nAnchorFrames = 0;
+		s_nAnchorFrames++;
+		if (s_nAnchorFrames == 30 || s_nAnchorFrames == 150)
+		{
+			DVector vGunPos, vOffPos, vGunHand, vGunF, vGunU;
+			VEC_INIT(vGunPos); VEC_INIT(vOffPos);
+			pClientDE->GetObjectPos(hPVModel, &vGunPos);
+			pClientDE->GetObjectPos(m_hOffHandGun, &vOffPos);
+			GetHandWorldFrom(vOrigin, m_vRightP, m_vRightF, m_vRightU, vGunHand, vGunF, vGunU);
+
+			Log("VR pistols #%d raw  R[%.4f,%.4f,%.4f] L[%.4f,%.4f,%.4f] scale %.2f/%.2f",
+				s_nAnchorFrames,
+				m_vRightP.x, m_vRightP.y, m_vRightP.z,
+				m_vLeftP.x,  m_vLeftP.y,  m_vLeftP.z,
+				m_fWorldScaleUsed, fScale);
+			Log("VR pistols #%d hand gun[%.1f,%.1f,%.1f] off[%.1f,%.1f,%.1f]",
+				s_nAnchorFrames,
+				vGunHand.x, vGunHand.y, vGunHand.z,
+				vHandPos.x, vHandPos.y, vHandPos.z);
+			Log("VR pistols #%d drift gun(half %d,%s)=%d[%.1f,%.1f,%.1f] off(half %d,%s)=%d[%.1f,%.1f,%.1f]",
+				s_nAnchorFrames,
+				nGunHalf, (nGunHalf == 0) ? "palm" : "palm3", (int)bGunAnchor,
+				vGunDrift.x, vGunDrift.y, vGunDrift.z,
+				nOffHalf, (nOffHalf == 0) ? "palm" : "palm3", (int)bOffAnchor,
+				vOffDrift.x, vOffDrift.y, vOffDrift.z);
+			Log("VR pistols #%d final gun[%.1f,%.1f,%.1f] off[%.1f,%.1f,%.1f] cam[%.1f,%.1f,%.1f] origin[%.1f,%.1f,%.1f]",
+				s_nAnchorFrames,
+				vGunPos.x, vGunPos.y, vGunPos.z,
+				vOffPos.x, vOffPos.y, vOffPos.z,
+				vCamPos.x, vCamPos.y, vCamPos.z,
+				vOrigin.x, vOrigin.y, vOrigin.z);
+		}
+	}
+
+	pClientDE->SetObjectFlags(m_hOffHandGun, VR_PV_FLAGS);
+
+	// Let go of both triggers and the alternation starts over, so the next
+	// burst begins on the dominant hand again rather than wherever the last
+	// one happened to stop.
+	{
+		DDWORD nHeld = m_nButtons & ~m_nSuppressed;
+		if (!(nHeld & SHOGOVR_BTN_FIRE) && !(nHeld & SHOGOVR_BTN_LEFT_TRIGGER)) m_nPistolLastHand = -1;
+	}
+
+	m_bPistolSplit = DTRUE;
+}
+
+// Dual pistols (#5): which pistol fires this shot.
+//
+// There is deliberately NO second cooldown here.  Shogo has one CWeaponModel
+// for the Colt 45 and its rate of fire is the length of the fire animation, and
+// that single cadence is left exactly as the game set it: the pair fires at the
+// stock rate between them, so the server sees the same stream of
+// MID_WEAPON_FIRE messages it always did and ammo drains at the stock rate.
+// All this does is decide which of the two pistols owns each shot the game
+// decides to fire.
+//
+// With both triggers held the two alternate, so the dominant hand fires first
+// and the other follows one cadence later.  With one trigger held that pistol
+// takes every shot.  Nothing is queued: the triggers are read at the moment
+// the shot happens, so a pull that starts and ends inside a pistol's cooldown
+// is simply never seen - to fire that pistol again you have to be holding its
+// trigger when the next shot comes round.
+int CVRStereo::PickPistolFireHand()
+{
+	// Suppression matters: the trigger that dismissed a menu must not also
+	// fire the instant play resumes.
+	DDWORD nHeld = m_nButtons & ~m_nSuppressed;
+
+	// The gun hand's trigger is SHOGOVR_BTN_FIRE and the off hand's is
+	// SHOGOVR_BTN_LEFT_TRIGGER *after* the left-handed swap in UpdateBridge,
+	// so this reads correctly in both handedness modes with no extra
+	// bookkeeping: whichever trigger is pulled, the pistol the player can see
+	// in that hand is the one that fires.
+	DBOOL bGun = (DBOOL)((nHeld & SHOGOVR_BTN_FIRE) != 0);
+	DBOOL bOff = (DBOOL)((nHeld & SHOGOVR_BTN_LEFT_TRIGGER) != 0);
+
+	if (bGun && bOff)
+	{
+		// Alternate.  m_nPistolLastHand starts at -1, so the dominant hand
+		// takes the first shot of a burst.
+		return (m_nPistolLastHand == 0) ? 1 : 0;
+	}
+	if (bGun) return 0;
+	if (bOff) return 1;
+	return -1;
+}
+
+// How far the fire animation has carried one half's hand away from its
+// object's origin, in world space.  Returned as the drift to subtract, so a
+// caller that wants the palm at vHand places the object at vHand - vDrift.
+//
+// GetModelNodeTransform is a read of the node's CURRENT global transform, and
+// there is no matching write in the engine's interface - so the only way to
+// move a hand is to move the whole object and cancel out the animation's own
+// offset, which is what this measures.  A frame of staleness in the figure
+// does not matter: it is recomputed every frame and the animation is
+// continuous.
+DBOOL CVRStereo::GetPistolAnchorDrift(HLOCALOBJ hObj, int nHalf, DVector &vDrift)
+{
+	VEC_INIT(vDrift);
+	if (!m_pClientDE || !hObj) return DFALSE;
+	if (m_vtPistolAnchor.GetFloat(1.0f) == 0.0f) return DFALSE;
+
+	// The hand each half is holding its pistol with.  Anchoring on the palm
+	// rather than on a null keeps the grip in the player's hand, which is the
+	// part that has to line up.
+	return GetNodeDrift(hObj, (nHalf == 0) ? "palm" : "palm3", vDrift);
+}
+
+// The same measurement for any named node: where it has ended up, as an offset
+// from its object's origin, so a caller can place the object at
+// (target - drift) and land that node on the target.
+DBOOL CVRStereo::GetNodeDrift(HLOCALOBJ hObj, const char* szNode, DVector &vDrift)
+{
+	VEC_INIT(vDrift);
+	if (!m_pClientDE || !hObj || !szNode || !szNode[0]) return DFALSE;
+
+	DVector vNode, vObj;
+	DRotation rNode;
+	if (!m_pClientDE->GetModelNodeTransform(hObj, (char*)szNode, &vNode, &rNode)) return DFALSE;
+	m_pClientDE->GetObjectPos(hObj, &vObj);
+
+	VEC_SUB(vDrift, vNode, vObj);
+	return DTRUE;
+}
+
+// Dual pistols (#5): aim the shot the game just fired down the pistol that
+// fired it.
+//
+// CWeaponModel::SendFireMsg takes the direction from the weapon object's own
+// rotation and the origin from m_vFlashPos, and the server honours both
+// verbatim (CPlayerObj::HandleWeaponFireMessage), so rewriting the two here -
+// after the game has built them and before the message goes out - is all it
+// takes to make the off hand's shots come from the off hand.  No message
+// format changes and the server is untouched.
+//
+// Note the weapon object's rotation is set only for SendFireMsg's benefit:
+// AdjustWeaponPose re-poses the model for display immediately afterwards.
+DBOOL CVRStereo::ApplyPistolShotPose(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale,
+									 DVector &vFlashPos, HLOCALOBJ hWeapon)
+{
+	if (!m_pClientDE || !m_bPistolSplit) return DFALSE;
+	if (nWeaponId != GUN_COLT45_ID) return DFALSE;
+
+	// The hand was settled in ShotFired(), which the engine called a few lines
+	// earlier in this same frame (see the note there for why it has to be that
+	// way round).
+	if (m_nPistolFireHand < 0) return DFALSE;
+
+	DVector vHandPos, vHandF, vHandU;
+	if (m_nPistolFireHand == 1)	GetHandWorldFrom(vCamPos, m_vLeftP, m_vLeftF, m_vLeftU, vHandPos, vHandF, vHandU);
+	else						GetHandWorld(vCamPos, vHandPos, vHandF, vHandU);
+
+	// Direction: straight down the hand that pulled.  (For the gun hand this
+	// is what the camera rotation already gave, since the split turns
+	// two-handed aim off - so only the off hand really changes here.)
+	if (hWeapon)
+	{
+		DRotation rRot;
+		m_pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
+		m_pClientDE->SetObjectRotation(hWeapon, &rRot);
+	}
+
+	// Origin: the same muzzle the flash is drawn at, so the shot and the
+	// flash agree.
+	if (m_vtPistolShotOrigin.GetFloat(1.0f) != 0.0f)
+	{
+		DVector vMuzzle;
+		if (GetMuzzleFlashWorld(nWeaponId, vCamPos, bFootScale, vMuzzle, W_FIRED))
+		{
+			VEC_COPY(vFlashPos, vMuzzle);
+		}
+	}
+
+	return DTRUE;
+}
+
 // Appends a weapon model's part names to ShogoVR\ShogoVR_models.txt - which
 // parts exist decides what can be hidden; send this file in if the arms on
-// some gun don't disappear.
+// some gun don't disappear.  Only written with VRVerboseDebug on; the caller
+// checks, and so does this, since writing a file is not something a debug
+// switch should leave to one caller remembering.
 void CVRStereo::DumpModelNodes(HLOCALOBJ hObj, int nWeaponId)
 {
 	if (!m_pClientDE || !hObj || !m_szIniPath[0]) return;
+	if (m_vtVerbose.GetFloat(0.0f) == 0.0f) return;
 	char szPath[320];
 	strncpy(szPath, m_szIniPath, sizeof(szPath) - 1);
 	szPath[sizeof(szPath) - 1] = 0;
@@ -3763,9 +5683,116 @@ void CVRStereo::ReleaseInjectedKey()
 // Per frame: turn controller edges into game commands (in a level) or into
 // menu keys (in the menus).  Continuous actions - fire, jump, crouch, movement
 // and turning - are read straight from the buttons/sticks elsewhere.
+// A tuning aid, OFF by default (VRNudgeKeys 1 to use it).
+//
+// Kept rather than deleted: it is how the shotgun's lent hand was seated, and
+// the same job will come up again for the knife's off hand and for any weapon
+// a later model dump turns out to need.  It costs one GetAsyncKeyState sweep
+// per frame while off, and nothing else.
+//
+// The shotgun's lent hand has to be placed by eye, and the only way to do that
+// so far has been to type a number, look, and type another.  These four keys
+// move it live: q/e walk it back and forth along the barrel, r/u drop and
+// raise it, f/y slide it sideways.  Every change is logged with all three
+// values, so the set that lands
+// it on the grip can be read straight out of ShogoVR_game.log and baked into
+// DomHandSeat.
+//
+// Polled rather than hooked: CRiotClientShell::OnKeyDown is Monolith source,
+// and a debug aid is not worth an engine edit and its modification note.
+// GetAsyncKeyState does not consume the key, so whatever q/e/r/u are bound to
+// still happens; VRNudgeKeys 0 switches this off.
+void CVRStereo::UpdateNudgeKeys()
+{
+	if (!m_pClientDE || m_vtNudgeKeys.GetFloat(1.0f) == 0.0f) return;
+
+	// The trims used to be cleared when handedness changed, because the
+	// seating they rode on was per-mode and carrying a trim across broke the
+	// other mode.  Both are a single shared value now that the offset lives in
+	// the gun's frame, so a trim tuned in one mode is just as correct in the
+	// other - switching keeps it, and a mode change is a free way to check it.
+	m_nNudgeLastHand = m_bLeftHanded ? 1 : 0;
+
+	DFLOAT fZ = 0.0f, fY = 0.0f, fX = 0.0f;
+	if (GetAsyncKeyState('Q') & 0x8000) fZ -= 1.0f;		// back along the barrel
+	if (GetAsyncKeyState('E') & 0x8000) fZ += 1.0f;		// forward
+	if (GetAsyncKeyState('R') & 0x8000) fY -= 1.0f;		// down
+	if (GetAsyncKeyState('U') & 0x8000) fY += 1.0f;		// up
+	// F, not T: T opens the game's "mpmimimi" all-weapons cheat entry, and
+	// these keys are polled rather than consumed, so T would do both.
+	if (GetAsyncKeyState('F') & 0x8000) fX -= 1.0f;		// sideways, one way
+	if (GetAsyncKeyState('Y') & 0x8000) fX += 1.0f;		// and the other
+
+	if (fZ == 0.0f && fY == 0.0f && fX == 0.0f)
+	{
+		m_nNudgeNextTick = 0;			// released: the next press acts at once
+		return;
+	}
+
+	DDWORD nNow = GetTickCount();
+	if (m_nNudgeNextTick && (long)(nNow - m_nNudgeNextTick) < 0) return;
+	m_nNudgeNextTick = nNow + 120;		// then repeats while held
+
+	DFLOAT fStep = m_vtNudgeStep.GetFloat(0.1f);
+	DFLOAT fNewZ = m_vtDomHandZ.GetFloat(0.0f) + fZ * fStep;
+	DFLOAT fNewY = m_vtDomHandY.GetFloat(0.0f) + fY * fStep;
+	DFLOAT fNewX = m_vtDomHandX.GetFloat(0.0f) + fX * fStep;
+
+	char szCmd[96];
+	if (fZ != 0.0f)
+	{
+		_snprintf(szCmd, sizeof(szCmd) - 1, "VRDomHandZ %g", fNewZ);
+		szCmd[sizeof(szCmd) - 1] = 0;
+		m_pClientDE->RunConsoleString(szCmd);
+	}
+	if (fY != 0.0f)
+	{
+		_snprintf(szCmd, sizeof(szCmd) - 1, "VRDomHandY %g", fNewY);
+		szCmd[sizeof(szCmd) - 1] = 0;
+		m_pClientDE->RunConsoleString(szCmd);
+	}
+	if (fX != 0.0f)
+	{
+		_snprintf(szCmd, sizeof(szCmd) - 1, "VRDomHandX %g", fNewX);
+		szCmd[sizeof(szCmd) - 1] = 0;
+		m_pClientDE->RunConsoleString(szCmd);
+	}
+
+	// Handedness is logged with it only as a check: all three axes are the
+	// GUN's now, and the gun's frame does not flip between the modes, so a
+	// value tuned in one should read correctly in the other.  If it ever does
+	// not, the frame assumption is wrong and that is worth knowing.  Both the
+	// trim and the seating it rides on are printed, so the log stays readable
+	// now that zero no longer means "no offset".
+	DFLOAT fSeatX, fSeatY, fSeatZ;
+	DomHandSeat(fSeatX, fSeatY, fSeatZ);
+	Log("VR nudge (%s-handed): trim X %g Y %g Z %g  ->  seated at X %g Y %g Z %g",
+		m_bLeftHanded ? "left" : "right",
+		fNewX, fNewY, fNewZ,
+		fSeatX + fNewX, fSeatY + fNewY, fSeatZ + fNewZ);
+}
+
+// The packet exactly as the bridge sent it, a few seconds apart.  Printed as
+// one line so a tester packet can be pasted straight back in, and so a device
+// capture can be diffed against one by eye.
+void CVRStereo::LogRawPacket()
+{
+	if (!m_pClientDE || !m_pXrApi) return;
+	if (m_vtVerbose.GetFloat(0.0f) == 0.0f) { m_fNextRawLog = 0.0f; return; }
+
+	DFLOAT fNow = m_pClientDE->GetTime();
+	if (m_fNextRawLog > 0.0f && fNow < m_fNextRawLog) return;
+	m_fNextRawLog = fNow + 5.0f;
+
+	const char* szRaw = m_pXrApi->GetRawPacket();
+	if (szRaw && szRaw[0]) Log("VR XrApi raw: %s", szRaw);
+}
+
 void CVRStereo::UpdateInput()
 {
 	ReleaseInjectedKey();
+	UpdateNudgeKeys();
+	LogRawPacket();
 	if (m_bTransformKeyDown && (long)(GetTickCount() - m_nTransformUpTick) >= 0) ReleaseTransformKey();
 
 	UpdateCrouchOffset();
@@ -3815,7 +5842,19 @@ void CVRStereo::UpdateInput()
 			DFLOAT fThreshVel = 0.7f + (fT * 3.0f);
 			DFLOAT fCd = 0.1f + (fT * 0.18f);
 
-			DVector vHandP = m_bLeftHanded ? m_vLeftP : m_vRightP;
+			// m_vRightP is ALWAYS the dominant hand: the two controller poses
+			// trade places at ingest in left-handed mode (see the swap where the
+			// packet is read), so the rest of the mod can just say "right" and
+			// mean "gun hand".  Picking m_vLeftP here applied that swap a SECOND
+			// time, which is why left-handed players had to slash with their right
+			// hand - the gesture was watching the off hand, on foot and in a mech
+			// alike, since both go through this one test.
+			//
+			// The haptic below is different and correctly does test the flag:
+			// m_fHapticL/R are physical motor channels on their way back to the
+			// runtime, and those are never swapped.
+			DVector vHandP;
+			VEC_COPY(vHandP, m_vRightP);
 
 			if (!m_bMeleeTrigger && (fNow - m_fMeleeLastFireTime) >= fCd)
 			{
@@ -3885,9 +5924,16 @@ void CVRStereo::UpdateInput()
 		// button is mapped to next/previous weapon.
 		if (nPress & SHOGOVR_BTN_NEXT_WEAPON) InjectCommandTap(COMMAND_ID_NEXT_WEAPON);
 
-		// Left trigger: nothing while alive; while dead it loads the quicksave.
+		// Left trigger: while dead it loads the quicksave, which keeps
+		// precedence over everything else on this button - losing a save
+		// reload to a grip toggle would be a bad trade.  While alive it takes
+		// hold of a two-handed weapon, or lets go of one (#8); with the dual
+		// pistols it does neither, because the Colt 45 is two separate guns and
+		// this trigger is already its off pistol's.
 		if ((nPress & SHOGOVR_BTN_LEFT_TRIGGER) && m_bPlayerDead)
 			InjectCommandTap(COMMAND_ID_QUICKLOAD);
+		else if (nPress & SHOGOVR_BTN_LEFT_TRIGGER)
+			ToggleTwoHandGrip();
 
 		// Right A: first/third person view.  The shell performs this directly
 		// when it polls ConsumeViewToggle() - don't inject the game's bound key
@@ -4206,9 +6252,77 @@ static const HeldGunModel s_HeldGuns[] =
 	{ -1, 0, 0 }
 };
 
+// A screenshot cannot reliably say which weapon is in shot - the shotgun and
+// the assault rifle read as the same gun at the wrong angle, and two fixes
+// have already been aimed at the wrong weapon because of it.  So the game says
+// so itself: one line each time the weapon changes, naming the model file and
+// every decision the mod made about that weapon's hands.
+void CVRStereo::LogWeaponHands(HLOCALOBJ hPVModel, int nWeaponId)
+{
+	// Deliberately checked before m_nLoggedWeapon is updated, so switching
+	// VRVerboseDebug on reports the weapon already in hand rather than staying
+	// silent until the next swap.
+	if (m_vtVerbose.GetFloat(0.0f) == 0.0f) return;
+
+	if (nWeaponId == m_nLoggedWeapon) return;
+	m_nLoggedWeapon = nWeaponId;
+	if (!hPVModel) return;
+
+	char* szModel = GetPVModelName(nWeaponId);
+	DBOOL bSwap   = (DBOOL)(m_vtOffHandSwap.GetFloat(0.0f) != 0.0f);
+	int   nFwd    = (m_vtOffHandAuto.GetFloat(1.0f) != 0.0f) ? ForwardHandGroup(hPVModel) : -1;
+	if (nFwd >= 0) bSwap = (DBOOL)(nFwd == 0);
+
+	Log("VR hands: weapon %d (%s) - hand groups A=%d B=%d; two-handed=%d split-off-hand=%d lent-dominant=%d; keeping group %c on the gun, moving group %c to the off hand",
+		nWeaponId,
+		szModel ? szModel : "?",
+		CountHandGroupNodes(hPVModel, 0),
+		CountHandGroupNodes(hPVModel, 1),
+		(int)IsTwoHandWeapon(nWeaponId),
+		(int)HasSplitOffHand(nWeaponId),
+		(int)(nWeaponId == GUN_SHOTGUN_ID),
+		bSwap ? 'B' : 'A',
+		bSwap ? 'A' : 'B');
+	if (nWeaponId == GUN_SHOTGUN_ID)
+	{
+		// The lent hand is seated in the GUN's frame, so both handedness modes
+		// should want the same offset - yet they do not (right 5.6/-5.4/-3.0,
+		// left -7.5/-4.2/-2.2).  If the gun's own basis differs between the
+		// modes, that is the reason, and this is the line that will say so.
+		DRotation rGun;
+		DVector gU, gR, gF;
+		m_pClientDE->GetObjectRotation(hPVModel, &rGun);
+		m_pClientDE->GetRotationVectors(&rGun, &gU, &gR, &gF);
+		Log("VR hands: shotgun basis (%s-handed) R %.3f %.3f %.3f  U %.3f %.3f %.3f  F %.3f %.3f %.3f",
+			m_bLeftHanded ? "left" : "right",
+			gR.x, gR.y, gR.z, gU.x, gU.y, gU.z, gF.x, gF.y, gF.z);
+
+		// Everything the lent hand's placement depends on, so a desktop run and
+		// a device run can be compared line for line.  The seating is in the
+		// gun's frame and so should transfer between them; if the hand lands
+		// differently, one of these differs and this says which.
+		DFLOAT fSX, fSY, fSZ;
+		DomHandSeat(fSX, fSY, fSZ);
+		DVector vGunPos, vPalm;
+		DRotation rTmp;
+		m_pClientDE->GetObjectPos(hPVModel, &vGunPos);
+		DBOOL bPalm = m_pClientDE->GetModelNodeTransform(hPVModel, (char*)"Right_Palm4", &vPalm, &rTmp);
+		Log("VR hands: shotgun seat %.2f %.2f %.2f + trim %.2f %.2f %.2f, gun scale %.3f, gun pos %.1f %.1f %.1f, own palm %s %.1f %.1f %.1f",
+			fSX, fSY, fSZ,
+			m_vtDomHandX.GetFloat(0.0f), m_vtDomHandY.GetFloat(0.0f), m_vtDomHandZ.GetFloat(0.0f),
+			m_fGunScaleUsed, vGunPos.x, vGunPos.y, vGunPos.z,
+			bPalm ? "at" : "MISSING", vPalm.x, vPalm.y, vPalm.z);
+	}
+
+	Log("VR hands: weapon %d - fore hand %s", nWeaponId,
+		(nFwd < 0) ? "could not be measured, using VROffHandSwap" :
+		(nFwd == 0) ? "measured as group A" : "measured as group B");
+}
+
 void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos)
 {
 	m_nCurrentWeaponId = nWeaponId;
+	LogWeaponHands(hPVModel, nWeaponId);
 	if (!m_pClientDE) return;
 	CClientDE* pClientDE = m_pClientDE;
 
@@ -4239,12 +6353,35 @@ void CVRStereo::UpdateHeldGun(HLOCALOBJ hPVModel, int nWeaponId, const DVector &
 
 	// First-person gun: list its parts once (ShogoVR_models.txt), and hide
 	// Sanjuro's arms on it unless they're wanted.
-	if (hPVModel && nWeaponId >= 0 && nWeaponId < 64 && !(m_nDumpedWeapons[nWeaponId / 32] & (1u << (nWeaponId % 32))))
+	//
+	// The dump is part of VRVerboseDebug, so an ordinary session writes no file
+	// at all.  The "already dumped" bit is only set when the dump actually
+	// happens, so switching verbose on mid-session still lists the weapons from
+	// there on rather than finding them all ticked off.
+	if (m_vtVerbose.GetFloat(0.0f) != 0.0f &&
+		hPVModel && nWeaponId >= 0 && nWeaponId < 64 && !(m_nDumpedWeapons[nWeaponId / 32] & (1u << (nWeaponId % 32))))
 	{
 		m_nDumpedWeapons[nWeaponId / 32] |= (1u << (nWeaponId % 32));
 		DumpModelNodes(hPVModel, nWeaponId);
 	}
-	DBOOL bHideArms = !bUseHeld && m_bAimByHand && m_vtGunArms.GetFloat(1.0f) == 0.0f;
+	// Dual pistols (#5): split the Colt 45's two halves between the hands.
+	// Runs after the held-gun hiding above so it can tell whether the
+	// first-person model is the one actually on show.
+	UpdateDualPistols(hPVModel, nWeaponId, vCamPos);
+
+	// Free off arm (#7): the submachine gun's spare arm follows the off
+	// controller.  After the pistols, because the two share one copy object and
+	// this one stands down whenever that split is live.
+	UpdateOffArm(hPVModel, nWeaponId, vCamPos);
+
+	// Weapons whose model is missing a hand get a borrowed one, so the player
+	// never has a controller with nothing on it.
+	UpdateDominantHand(hPVModel, nWeaponId, vCamPos);
+	UpdateFreeOffHand(hPVModel, nWeaponId, vCamPos);
+
+	// ...and when it is split, the "arms" are half of each pistol's own model:
+	// hiding them would take away the hand holding the gun.
+	DBOOL bHideArms = !bUseHeld && !m_bPistolSplit && m_bAimByHand && m_vtGunArms.GetFloat(1.0f) == 0.0f;
 	if (bHideArms && hPVModel)
 	{
 		SetArmNodesHidden(hPVModel, DTRUE);				// every frame: new model on each weapon switch
@@ -4317,8 +6454,11 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 {
 	if (!m_pClientDE || !m_bAimByHand) return DFALSE;
 
-	// Dual pistols (Colt 45) fire from two barrels alternately (W_FIRED / W_FIRED2).
-	// We'll pass the fired state through to get correct muzzle position for each barrel (#41).
+	// Dual pistols: the stock pair alternates barrels and reports which one
+	// fired as W_FIRED / W_FIRED2, which is why that state is passed in (#41).
+	// Note it is the fire ANIMATION that alternates, not the player's hands -
+	// so once the pair is split between the hands (#5) the state says nothing
+	// about which pistol fired and the mod's own answer is used instead.
 
 	// Is the mod drawing its own third-person gun for this weapon?  (Same test
 	// as UpdateHeldGun - keep the two in step.)
@@ -4330,7 +6470,17 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 	DVector vPos, vR, vU, vF, vT;
 	DFLOAT fScale;
 	DVector vHandPos, vHandF, vHandU;
-	GetHandWorld(vCamPos, vHandPos, vHandF, vHandU);
+
+	// Dual pistols (#5): the flash belongs on the pistol that fired, so it is
+	// placed from that hand's own pose.  Hand 0 is the gun hand, whose model
+	// the game poses itself; hand 1 is the off hand, holding our copy.
+	// Default to the gun hand rather than -1: a flash drawn before the first
+	// granted shot must still be treated as a split pistol, or it would get
+	// the stock pair's barrel spread applied on top of a hand origin.
+	int nPistolHand = -1;
+	if (m_bPistolSplit) nPistolHand = (m_nPistolFireHand >= 0) ? m_nPistolFireHand : 0;
+	if (nPistolHand == 1)	GetHandWorldFrom(vCamPos, m_vLeftP, m_vLeftF, m_vLeftU, vHandPos, vHandF, vHandU);
+	else					GetHandWorld(vCamPos, vHandPos, vHandF, vHandU);
 
 	DRotation rRot;
 
@@ -4354,17 +6504,32 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 	}
 	else
 	{
-		// Mirror the placement AdjustWeaponPose() gives the first-person model.
+		// Mirror the placement AdjustWeaponPose() gives the first-person model -
+		// or, for the off-hand pistol, the placement UpdateDualPistols gives
+		// our own copy, which is the same plus its own roll and trim.
 		m_pClientDE->AlignRotation(&rRot, &vHandF, &vHandU);
+		if (nPistolHand == 1)
+		{
+			DFLOAT fOffRoll = m_vtPistolOffRoll.GetFloat(0.0f);
+			if (fOffRoll != 0.0f) m_pClientDE->EulerRotateZ(&rRot, VR_DEG2RAD(fOffRoll));
+		}
 		m_pClientDE->GetRotationVectors(&rRot, &vU, &vR, &vF);
 
 		fScale = bFootScale ? m_vtGunScale.GetFloat(1.5f) : m_vtGunScaleMCA.GetFloat(1.0f);
 		if (fScale < 0.2f) fScale = 0.2f;
 
+		DFLOAT fOffX = 0.0f, fOffY = 0.0f, fOffZ = 0.0f;
+		if (nPistolHand == 1)
+		{
+			fOffX = m_vtPistolOffX.GetFloat(0.0f);
+			fOffY = m_vtPistolOffY.GetFloat(0.0f);
+			fOffZ = m_vtPistolOffZ.GetFloat(0.0f);
+		}
+
 		VEC_COPY(vPos, vHandPos);
-		VEC_MULSCALAR(vT, vR, m_vtGunX.GetFloat(0.0f) * fScale); VEC_ADD(vPos, vPos, vT);
-		VEC_MULSCALAR(vT, vU, m_vtGunY.GetFloat(0.0f) * fScale); VEC_ADD(vPos, vPos, vT);
-		VEC_MULSCALAR(vT, vF, m_vtGunZ.GetFloat(0.0f) * fScale); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vR, (m_vtGunX.GetFloat(0.0f) + fOffX) * fScale); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vU, (m_vtGunY.GetFloat(0.0f) + fOffY) * fScale); VEC_ADD(vPos, vPos, vT);
+		VEC_MULSCALAR(vT, vF, (m_vtGunZ.GetFloat(0.0f) + fOffZ) * fScale); VEC_ADD(vPos, vPos, vT);
 	}
 
 	// The muzzle offset is in the model's own frame (x right, y up, z forward)
@@ -4396,8 +6561,15 @@ DBOOL CVRStereo::GetMuzzleFlashWorld(int nWeaponId, const DVector &vCamPos, DBOO
 	// (VRGunModel=0, the default) - either way the flash is drawn on the gun the
 	// player sees, so the corrections must not be tied to one of them.  (They
 	// used to be, which is why a device run with VRGunModel=0 saw no change.)
-	if (nWeaponId == GUN_COLT45_ID)	vMuzzle.x *= m_vtPistolSpread.GetFloat(0.63f);
-	else							vMuzzle.x  = m_vtMuzzleLateral.GetFloat(0.0f);
+	// #5: once the pair is split, the origin above IS the firing hand, so the
+	// table's left/right value must NOT be applied on top - doing both puts
+	// the left pistol's flash out past the left of the left hand.  A split
+	// pistol is therefore treated like every other single-barrel weapon and
+	// its flash sits on the barrel axis.  VRPistolSpread still scales the
+	// stock pair, where one model holds both barrels and the table's x is
+	// what tells them apart.
+	if (nWeaponId == GUN_COLT45_ID && nPistolHand < 0)	vMuzzle.x *= m_vtPistolSpread.GetFloat(0.63f);
+	else												vMuzzle.x  = m_vtMuzzleLateral.GetFloat(0.0f);
 
 	// #46: only the DUAL PISTOLS get a y/z correction - and a small one
 	// (x0.5 of VRFlashLower down, x0.3 of VRFlashOffset forward).  Every OTHER

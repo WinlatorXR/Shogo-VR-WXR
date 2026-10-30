@@ -89,6 +89,9 @@ class CVRStereo
 		// is called when a new movie starts so the video is re-detected.
 		void	ShiftMovieToRightHalf();
 		void	ResetMovieSource();
+		// DFALSE when the window is showing our own two clones rather than a
+		// fresh centred frame from the movie player - see ShiftMovieToRightHalf.
+		DBOOL	MovieFrameIsFresh(HSURFACE hScreen, int xL, int vw, DDWORD nW, DDWORD nH);
 
 		// Wrap the crosshair blits so they can be placed at aim depth.
 		void	BeginCrosshair()		{ m_bCrosshairPass = DTRUE; }
@@ -138,6 +141,13 @@ class CVRStereo
 		// Physical motion melee attacks (#3)
 		void	SetCurrentWeaponId(int nId) { m_nCurrentWeaponId = nId; }
 		DBOOL	IsMeleeWeaponEquipped();
+		int		GetPistolFireHand()	{ return m_bPistolSplit ? m_nPistolFireHand : -1; }
+		// Points a granted pistol shot at what that hand is aiming at, and
+		// (unless VRPistolShotOrigin is off) starts it at that pistol's own
+		// muzzle.  Returns DFALSE for anything but a split pair, leaving the
+		// shot exactly as the game built it.
+		DBOOL	ApplyPistolShotPose(int nWeaponId, const DVector &vCamPos, DBOOL bFootScale,
+									DVector &vFlashPos, HLOCALOBJ hWeapon);
 
 		// Motion controllers (through the bridge)
 		DBOOL	IsControllerActive();
@@ -282,6 +292,11 @@ class CVRStereo
 		DFLOAT	StickTurn();
 		DBOOL	VRCommandOn(int nCommand);
 		void	GetHandWorld(const DVector &vCamPos, DVector &vPos, DVector &vF, DVector &vU);
+		// The same transform for an arbitrary hand pose, so the off-hand pistol
+		// (#5) can be placed without a second copy of the body-frame maths.
+		void	GetHandWorldFrom(const DVector &vCamPos, const DVector &vHandP,
+								 const DVector &vHandF, const DVector &vHandU,
+								 DVector &vPos, DVector &vF, DVector &vU);
 		void	UpdateTwoHanded();
 		int		HideModelNodes(HLOCALOBJ hObj, DBOOL bHead, DBOOL bArms);
 		void	SetBodyAnim(const char* szAnim, DBOOL bLoop);
@@ -294,6 +309,64 @@ class CVRStereo
 		void	InjectCommandTap(int nCommand);
 		void	ReleaseInjectedKey();
 		int		SetArmNodesHidden(HLOCALOBJ hObj, DBOOL bHide);
+		// Dual pistols (#5): the Colt 45's first-person model holds both pistols
+		// and both hands as two mirrored halves, so each half can be shown on its
+		// own object.  nHalf 0 = the gun-hand half, 1 = the off-hand half.
+		int		SetHalfNodesHidden(HLOCALOBJ hObj, int nHalf, DBOOL bHide);
+		int		CountHalfNodes(HLOCALOBJ hObj, int nHalf);
+		// Free off arm (#7): the submachine gun carries a second arm that holds
+		// nothing, which can follow the off controller instead of the animation.
+		void	UpdateOffArm(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos);
+		int		SetArmGroupHidden(HLOCALOBJ hObj, int nGroup, DBOOL bHide);
+		int		CountArmGroupNodes(HLOCALOBJ hObj, int nGroup);
+		// DFALSE while the gun's own animation needs that arm - reloading seats
+		// the magazine with it - so it is handed back for the duration.
+		DBOOL	OffArmHandIsFree(HLOCALOBJ hPVModel);
+		// A borrowed hand for a weapon whose model never drew one (the shotgun).
+		void	UpdateDominantHand(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos);
+		void	UpdateFreeOffHand(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos);
+		// Two-handed grip (#8): the off hand goes on the gun instead of on its
+		// own controller, and the gun aims along the line between the hands.
+		int		SetHandGroupHidden(HLOCALOBJ hObj, int nGroup, DBOOL bHide);
+		int		CountHandGroupNodes(HLOCALOBJ hObj, int nGroup);
+		int		SetRifleArmsHidden(HLOCALOBJ hObj, DBOOL bHide);
+		int		LentHandGroup(DBOOL bDominant);
+		DBOOL	UseLentOffHand(int nWeaponId);
+		// The built-in seating of the shotgun's lent hand, which differs
+		// between the handedness modes - see the .cpp.
+		void	DomHandSeat(DFLOAT &fX, DFLOAT &fY, DFLOAT &fZ);
+		// Seats a lent hand on the WEAPON rather than on the controller.
+		void	PoseLentHandOnGun(HLOCALOBJ hObj, int nGroup, HLOCALOBJ hGun,
+								  const DVector &vHandPos,
+								  DFLOAT fX, DFLOAT fY, DFLOAT fZ, DFLOAT fRoll);
+		// TEMPORARY, for seating the lent hand on device - see the .cpp.
+		void	UpdateNudgeKeys();
+		// With VRVerboseDebug on, prints the incoming XrApi packet every few
+		// seconds so the tester and the headset can be compared directly.
+		void	LogRawPacket();
+		// One log line per weapon change saying what the mod decided about
+		// that weapon's hands - see UpdateHeldGun.
+		void	LogWeaponHands(HLOCALOBJ hPVModel, int nWeaponId);
+		// Which hand group sits further along the barrel, measured on the
+		// model itself: 0, 1, or -1 when it cannot tell.
+		int		ForwardHandGroup(HLOCALOBJ hObj);
+		DBOOL	GetHandGroupDrift(HLOCALOBJ hObj, int nGroup, DVector &vDrift);
+		DBOOL	CanEngageGrip();
+		void	ToggleTwoHandGrip();
+		// Shared by both: a hand borrowed from another weapon's model.
+		HLOCALOBJ BorrowHand(const DVector &vCamPos);
+		void	PoseBorrowedHand(HLOCALOBJ hObj, int nGroup, const DVector &vHandP,
+								 const DVector &vHandF, const DVector &vHandU,
+								 const DVector &vCamPos,
+								 DFLOAT fTX, DFLOAT fTY, DFLOAT fTZ, DFLOAT fRoll);
+		void	UpdateDualPistols(HLOCALOBJ hPVModel, int nWeaponId, const DVector &vCamPos);
+		// Where a hand node has drifted to under the fire animation, as a world
+		// offset from its object's origin, so a copy can be placed to put that
+		// node back in the player's hand.
+		DBOOL	GetPistolAnchorDrift(HLOCALOBJ hObj, int nHalf, DVector &vDrift);
+		// How far one named node has been carried from its object's origin.
+		DBOOL	GetNodeDrift(HLOCALOBJ hObj, const char* szNode, DVector &vDrift);
+		int		PickPistolFireHand();
 		void	DumpModelNodes(HLOCALOBJ hObj, int nWeaponId);
 		static DBOOL	Hook_IsCommandOn(int nCommand);
 		DBOOL	(*m_pfnIsCommandOn)(int);
@@ -328,6 +401,8 @@ class CVRStereo
 		HSURFACE	m_hMovieSurface;
 		DRect		m_rcMovieSrc;
 		DBOOL		m_bMovieSrcKnown;
+		DBOOL		m_bMovieFrameStored;	// m_hMovieSurface holds a fresh movie frame
+		DBOOL		m_bMovieNeedClear;		// blank the window once before trusting what is on it
 		void	(*m_pfnDrawStringToSurface)(HSURFACE, HDEFONT, HSTRING, DRect*, HDECOLOR, HDECOLOR);
 		float	(*m_pfnGetFrameTime)();
 		void	(*m_pfnGetSurfaceDims)(HSURFACE, DDWORD*, DDWORD*);
@@ -475,6 +550,31 @@ class CVRStereo
 		HLOCALOBJ	m_hHiddenPV;		// first-person weapon model whose parts we've hidden
 		HLOCALOBJ	m_hArmlessPV;		// first-person weapon model whose arm parts we've hidden
 		DDWORD		m_nDumpedWeapons[2];	// weapons whose model parts are listed in ShogoVR_models.txt
+
+		// Dual pistols (#5)
+		HLOCALOBJ	m_hOffHandGun;		// the off hand's pistol: our own copy of the Colt 45 model
+		int			m_nOffHandGunId;	// which weapon that copy was made for
+		HLOCALOBJ	m_hSplitPV;			// first-person model we've split into halves
+		DBOOL		m_bPistolSplit;		// the split is live this frame
+		DBOOL		m_bOffArmSplit;		// #7: the off arm is on its controller this frame
+		HLOCALOBJ	m_hOffArmPV;		// the model we hid an arm group on
+		HLOCALOBJ	m_hOffArmAnimFor;	// the model the animation indices below were read from
+		DDWORD		m_nOffArmFreeAnim[8];	// animations during which the arm is free
+		int			m_nOffArmFreeCount;
+		HLOCALOBJ	m_hDomHand;			// borrowed dominant hand (shotgun)
+		int			m_nDomHandFor;		// which weapon it was borrowed for
+		int			m_nLoggedWeapon;	// last weapon LogWeaponHands reported
+		HLOCALOBJ	m_hFreeHand;		// borrowed off hand (knife, squeaky toy)
+		DBOOL		m_bTwoHandGrip;		// #8: the off hand is on the gun
+		int			m_nPistolFireHand;	// the hand whose shot is in flight, or -1
+		int			m_nPistolLastHand;	// the hand that fired the previous shot, for alternating
+		DDWORD		m_nOffHandAnim;		// animation the off-hand copy is following, so it can track the real one
+		DVector		m_vPistolAnchorFix;	// gun-hand anchor correction, applied by AdjustWeaponPose
+		DVector		m_vWeaponPoseOrigin;	// the origin AdjustWeaponPose actually used this frame
+		HLOCALOBJ	m_hCameraObj;		// the game camera, cached so the weapon pose can find it
+		DBOOL		m_bWeaponPoseOrigin;	// ...and whether it has been given one yet
+		DVector		m_vPistolAimF;		// aim being eased towards the firing pistol's own direction
+		DBOOL		m_bPistolAimValid;	// m_vPistolAimF has been seeded
 		DBOOL		m_bCaptureHook;
 
 		// Physical motion melee (#3)
@@ -517,6 +617,9 @@ class CVRStereo
 		VarTrack	m_vtEyeHeightFoot;	// VREyeHeightFoot  metres, used by VRCalibrate
 		VarTrack	m_vtEyeHeightMCA;	// VREyeHeightMCA   metres, used by VRCalibrate
 		VarTrack	m_vtHudDepth;		// VRHudDepth       metres
+		VarTrack	m_vtVerbose;		// VRVerboseDebug   the diagnostic logging, off by default
+		DFLOAT		m_fNextRawLog;		// when to print the next raw XrApi packet
+		VarTrack	m_vtHudAutoScale;	// VRHudAutoScale   shrink the HUD on oversized containers
 		VarTrack	m_vtHudScale;		// VRHudScale       size of the HUD/menu panel on a monitor (1 = fit the eye)
 		VarTrack	m_vtHudWidth;		// VRHudWidth       headset: width of the HUD in degrees
 		VarTrack	m_vtHudLayout;		// VRHudLayout      headset: screen width the HUD is laid out for (smaller = bigger HUD)
@@ -578,8 +681,49 @@ class CVRStereo
 		VarTrack	m_vtSyncHold;		// VRSyncHold       1 = block for a new HMD_SYNC each frame (default on)
 		VarTrack	m_vtFlashTest;		// VRFlashTest      0 = off; non-zero forces a red flash every frame (diagnostic)
 		VarTrack	m_vtMeleeSens;		// Gesture melee sensitivity
-		VarTrack	m_vtWepSwapPhysical;	// PhysicalWepSwap
-		VarTrack	m_vtWepSwapThumb;		// WepSwapThumbstick
+		VarTrack	m_vtWepSwapPhysical;	// VRPhysicalWepSwap
+		VarTrack	m_vtWepSwapThumb;		// VRWepSwapThumbstick
+		VarTrack	m_vtDualPistols;	// VRDualPistols    1 = a Colt 45 in each hand (#5)
+		VarTrack	m_vtPistolSwapHalves;	// VRPistolSwapHalves 1 = swap which model half goes in which hand
+		VarTrack	m_vtPistolOffX;		// VRPistolOffX     off-hand pistol nudge, right (model units)
+		VarTrack	m_vtPistolOffY;		// VRPistolOffY     off-hand pistol nudge, up
+		VarTrack	m_vtPistolOffZ;		// VRPistolOffZ     off-hand pistol nudge, forward
+		VarTrack	m_vtPistolOffRoll;	// VRPistolOffRoll  off-hand pistol roll, degrees
+		VarTrack	m_vtSplitOffHand;	// VRSplitOffHand   1 = free arm follows the off controller (#7)
+		VarTrack	m_vtOffHandAuto;	// VROffHandAuto    work out the fore hand by measuring
+		VarTrack	m_vtLentHandSwap;	// VRLentHandSwap   flip which borrowed hand is which
+		VarTrack	m_vtNudgeKeys;		// VRNudgeKeys      TEMPORARY q/e/r/u hand nudging
+		VarTrack	m_vtNudgeStep;		// VRNudgeStep      how far one press moves it
+		DDWORD		m_nNudgeNextTick;	// auto-repeat while a nudge key is held
+		int			m_nNudgeLastHand;	// -1, or the handedness the trims belong to
+		VarTrack	m_vtOffHandSwap;	// VROffHandSwap    which arm group is the free one
+		VarTrack	m_vtOffHandAnchor;	// VROffHandAnchor  1 = pin the free palm to the controller
+		VarTrack	m_vtOffHandX;		// VROffHandX       free-arm seating trims
+		VarTrack	m_vtOffHandY;
+		VarTrack	m_vtOffHandZ;
+		VarTrack	m_vtOffHandRoll;	// VROffHandRoll    free-arm roll, degrees
+		VarTrack	m_vtDomHand;		// VRDomHand        1 = lend a hand to guns that have none
+		VarTrack	m_vtDomHandX;		// VRDomHandX       its seating trims
+		VarTrack	m_vtDomHandY;
+		VarTrack	m_vtDomHandZ;
+		VarTrack	m_vtDomHandRoll;	// VRDomHandRoll    its roll, degrees
+		VarTrack	m_vtFreeHand;		// VRFreeHand       1 = lend an off hand to weapons that have none
+		VarTrack	m_vtFreeHandX;		// VRFreeHandX      its seating trims
+		VarTrack	m_vtFreeHandY;
+		VarTrack	m_vtFreeHandZ;
+		VarTrack	m_vtFreeHandRoll;	// VRFreeHandRoll   its roll, degrees
+		VarTrack	m_vtHandArm;		// VRHandArm        1 = draw the forearm with a hand we pose ourselves
+		VarTrack	m_vtTwoHandWeapons;	// VRTwoHandWeapons  the master switch the
+										// "Two handed weapons" menu row drives:
+										// off restores the stock hands and
+										// dominant-hand aim on every weapon
+		VarTrack	m_vtTwoHandGrip;	// VRTwoHandGrip    1 = the off trigger toggles a two-handed grip (#8)
+		VarTrack	m_vtGripDist;		// VRGripDist       furthest the hands may be apart to take hold, metres
+		VarTrack	m_vtGripAngle;		// VRGripAngle      how far off the barrel the off hand may be, degrees
+		VarTrack	m_vtPistolMirror;	// VRPistolMirror   1 = undo the hand-flip roll for the mirrored off-hand half
+		VarTrack	m_vtPistolAnchor;	// VRPistolAnchor   1 = pin each hand's palm node to its controller
+		VarTrack	m_vtPistolAimSnap;	// VRPistolAimSnap  how fast the aim swings to the firing pistol (0 = never)
+		VarTrack	m_vtPistolShotOrigin;	// VRPistolShotOrigin 1 = shots start at the firing pistol's muzzle
 };
 
 extern CVRStereo g_VRStereo;

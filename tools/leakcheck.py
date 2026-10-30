@@ -2,6 +2,12 @@
 """Checks that no code from Monolith's Shogo source has been copied into this
 repository.  Usage: python tools/leakcheck.py <path to Shogo source>
 
+The path must be a PRISTINE Monolith v2.2 source release - in this working
+tree that is shogosrc, not ShogoSource.  ShogoSource is the same release with
+the mod already integrated, so comparing against it matches the mod's own
+added lines where ShogoSourceModifications/ quotes them back, and reports a
+dozen false "copied" blocks.  Both trees are git-ignored and must stay so.
+
 Every non-trivial line (30+ characters after collapsing spaces; #include lines
 ignored) of the repository's files is compared with the Shogo source release.
 Three or more consecutive matching lines - copied code - fail the check.

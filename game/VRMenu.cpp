@@ -9,6 +9,11 @@
 //           applied immediately: game settings via the console, headset
 //           settings by the bridge, which watches the same file.
 //
+//           Two pages share this one object: "VR SETTINGS" (the everyday list)
+//           and "VR ADVANCED" behind its "Advanced settings" row, which holds
+//           the dual-pistol, free-off-hand, lent-hand and two-handed-grip
+//           settings that could previously only be changed by editing the ini.
+//
 // ======================================================================= //
 
 #include <windows.h>
@@ -27,9 +32,15 @@
 #define VRS_TOGGLE		2
 #define VRS_ACTION		3
 
-#define VRM_RECENTER	6
-#define VRM_DEFAULTS	7
-#define VRM_BACK		8
+// The action rows (#49): these used to be three fixed indices, which silently
+// went stale when VRMENU_ITEMS grew to 12 - Return() then matched the three
+// SETTINGS rows above them, so "Wep Swap Via RS" reset every VR setting and
+// "Recentre view" did nothing at all.  The actions are matched by label now,
+// so adding or moving a row can never point them at the wrong thing again.
+#define VRM_ACT_ADVANCED	"Advanced settings"
+#define VRM_ACT_RECENTER	"Recentre view"
+#define VRM_ACT_DEFAULTS	"Reset to defaults"
+#define VRM_ACT_BACK		"Back"
 
 struct VRMenuSetting
 {
@@ -49,7 +60,7 @@ struct VRMenuSetting
 // fixed defaults in the CVRStereo VarTrack Init calls / the bridge's own
 // defaults.  Same settings and defaults as the desktop "Shogo VR Settings"
 // window where a row still exists.
-static VRMenuSetting s_Settings[VRMENU_ITEMS] =
+static VRMenuSetting s_Main[] =
 {
 	{ "Dominant hand",			"Controls",	"LeftHanded",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "right-handed", "left-handed" }, { 0, 1 } },
 	{ "Hands flip",			"Game",		"VRHandFlip",		VRS_CHOICE,	0,		0, 0, 0, 1,			"",			2, { "off", "on" }, { 0, 1 } },
@@ -57,13 +68,51 @@ static VRMenuSetting s_Settings[VRMENU_ITEMS] =
 	{ "Smooth turn speed",		"Game",		"VRTurnSpeed",		VRS_RANGE,	150,	45, 360, 15, 1,		" deg/s",	0, { 0 }, { 0 } },
 	{ "Move dead zone",			"Game",		"VRMoveDeadZone",	VRS_RANGE,	0.15f,	0, 0.5f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
 	{ "Swap wep threshold",	"Game",		"VRWeaponSwapDead",	VRS_RANGE,	0.8f,	0, 1.0f, 0.01f,	100,	"%",	0, { 0 }, { 0 } },
-	{ "Physical wep swap",		"Game",		"PhysicalWepSwap",	VRS_TOGGLE,	0,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
-	{ "Wep Swap Via RS",		"Game",		"WepSwapThumbstick",VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "Physical wep swap",		"Game",		"VRPhysicalWepSwap",	VRS_TOGGLE,	0,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "Wep Swap Via RS",		"Game",		"VRWepSwapThumbstick",VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
 	{ "Gesture melee sens.",	"Game",		"VRMeleeSens",		VRS_CHOICE,	15,		0, 0, 0, 1,			"",			8, { "OFF", "10%", "15%", "25%", "30%", "40%", "60%", "80%" }, { 0, 10, 15, 25, 30, 40, 60, 80 } },
+	{ "Advanced settings",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "Recentre view",			"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "Reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 	{ "Back",					"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
 };
+
+// Page 2 - "VR ADVANCED".  Deliberately two rows: the owner asked for the two
+// decisions, not the knobs behind them.  Each is a master switch whose "off"
+// is the behaviour from before the feature existed, so a player who dislikes
+// either gets V1.0 back without knowing a CVar name.
+//
+// HUD size is here rather than on the everyday page because it exists for one
+// situation: a WinlatorXR container run above the headset's own resolution for
+// supersampling (#6), where the HUD is 2D art blitted at fixed sizes and so
+// covers a different share of the view.  VRHudAutoScale already corrects for
+// that automatically; this row trims around the result, and its range reaches
+// far enough to undo the correction entirely.
+//
+// Everything finer - which half of a model is the off hand, the seating trims,
+// the roll corrections, the grip reach and angle, the lent hands - stays in
+// ShogoVR.ini. Those were all settled on device once and should not be sitting
+// in front of a player who has no way to tell what they do.
+//
+// Defaults here MUST match the VarTrack defaults in CVRStereo::Init, or "Reset
+// to defaults" would quietly move the mod off its tested settings.
+static VRMenuSetting s_Adv[] =
+{
+	{ "Dual pistols",			"Game",		"VRDualPistols",		VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "Two handed weps",		"Game",		"VRTwoHandWeapons",		VRS_TOGGLE,	1,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "HUD size",				"Game",		"VRHudScale",			VRS_RANGE,	1.0f,	0.5f, 1.5f, 0.05f, 100,	"%",	0, { 0 }, { 0 } },
+	{ "Verbose debug",			"Game",		"VRVerboseDebug",		VRS_TOGGLE,	0,		0, 1, 1, 1,			"",			0, { 0 }, { 0 } },
+	{ "Reset to defaults",		"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
+	{ "Back",					"",			"",					VRS_ACTION,	0,		0, 0, 0, 1,			"",			0, { 0 }, { 0 } },
+};
+
+static VRMenuSetting* const s_Page[VRMENU_PAGES]	= { s_Main, s_Adv };
+static const int s_PageItems[VRMENU_PAGES]			= { sizeof(s_Main) / sizeof(s_Main[0]),
+													    sizeof(s_Adv)  / sizeof(s_Adv[0]) };
+static const char* const s_PageTitle[VRMENU_PAGES]	= { "VR SETTINGS", "VR ADVANCED" };
+
+// The row being talked about, on whichever page is showing.
+#define ROW(i)	(s_Page[m_nPage][i])
 
 static int ChoiceIndex(const VRMenuSetting& s, float v)
 {
@@ -81,10 +130,37 @@ static int ChoiceIndex(const VRMenuSetting& s, float v)
 
 CVRMenu::CVRMenu()
 {
+	m_nPage = VRMENU_PAGE_MAIN;		// before ItemCount()/ROW(), both of which read it
 	m_nSecondColumn = 0;
 	m_szIni[0] = 0;
 	int i;
-	for (i = 0; i < VRMENU_ITEMS; i++) m_fValue[i] = s_Settings[i].fDefault;
+	for (i = 0; i < ItemCount(); i++) m_fValue[i] = ROW(i).fDefault;
+}
+
+int CVRMenu::ItemCount() const
+{
+	if (m_nPage < 0 || m_nPage >= VRMENU_PAGES) return s_PageItems[VRMENU_PAGE_MAIN];
+	return s_PageItems[m_nPage];
+}
+
+// Swapping page is a full surface rebuild: the labels, the values, the title
+// and every measurement belong to the page, and CBaseMenu counts its items by
+// walking m_GenericItem for non-null surfaces - so the old page's rows have to
+// be freed, not just drawn over, or the shorter page would keep the longer
+// one's leftovers and the selection could land on a row that is not there.
+//
+// LoadSurfaces() ends in CBaseMenu::LoadSurfaces(), which recounts the items
+// and calls CalculateMenuDims(), so the new page re-centres itself.
+void CVRMenu::SetPage (int nPage)
+{
+	if (nPage < 0 || nPage >= VRMENU_PAGES) return;
+	if (nPage == m_nPage) return;
+
+	UnloadSurfaces();
+	m_nPage = nPage;
+	m_nSelection = 0;
+	m_nTopItem = 0;
+	LoadSurfaces();
 }
 
 DBOOL CVRMenu::Init (CClientDE* pClientDE, CRiotMenu* pRiotMenu, CBaseMenu* pParent, int nScreenWidth, int nScreenHeight)
@@ -124,9 +200,9 @@ const char* CVRMenu::IniPath()
 void CVRMenu::ReadValues()
 {
 	int i;
-	for (i = 0; i < VRMENU_ITEMS; i++)
+	for (i = 0; i < ItemCount(); i++)
 	{
-		const VRMenuSetting& s = s_Settings[i];
+		const VRMenuSetting& s = ROW(i);
 		if (s.nType == VRS_ACTION) continue;
 
 		char szDef[32], szBuf[64];
@@ -139,7 +215,7 @@ void CVRMenu::ReadValues()
 
 void CVRMenu::FormatValue (int nItem, char* szOut, int nOutSize)
 {
-	const VRMenuSetting& s = s_Settings[nItem];
+	const VRMenuSetting& s = ROW(nItem);
 	float v = m_fValue[nItem];
 	szOut[0] = 0;
 
@@ -169,7 +245,7 @@ DBOOL CVRMenu::MakeValueSurface (int nItem)
 	m_Values[nItem].hMenuItem = DNULL;
 	m_Values[nItem].hMenuItemSelected = DNULL;
 
-	if (s_Settings[nItem].nType == VRS_ACTION) return DTRUE;
+	if (ROW(nItem).nType == VRS_ACTION) return DTRUE;
 
 	char szText[64];
 	FormatValue (nItem, szText, sizeof(szText));
@@ -181,7 +257,7 @@ DBOOL CVRMenu::MakeValueSurface (int nItem)
 // Writes one setting to ShogoVR.ini and, for game settings, applies it now.
 void CVRMenu::WriteValue (int nItem)
 {
-	const VRMenuSetting& s = s_Settings[nItem];
+	const VRMenuSetting& s = ROW(nItem);
 	if (s.nType == VRS_ACTION || !m_pClientDE) return;
 
 	char szVal[32];
@@ -200,7 +276,7 @@ void CVRMenu::WriteValue (int nItem)
 
 void CVRMenu::Change (int nItem, int nDir)
 {
-	const VRMenuSetting& s = s_Settings[nItem];
+	const VRMenuSetting& s = ROW(nItem);
 	float& v = m_fValue[nItem];
 
 	if (s.nType == VRS_CHOICE)
@@ -225,13 +301,13 @@ void CVRMenu::Change (int nItem, int nDir)
 	else return;
 
 	// Physical motion weapon swapping (#4): mutual exclusion - cannot have both off
-	if (strcmp(s.szKey, "PhysicalWepSwap") == 0 || strcmp(s.szKey, "WepSwapThumbstick") == 0)
+	if (strcmp(s.szKey, "VRPhysicalWepSwap") == 0 || strcmp(s.szKey, "VRWepSwapThumbstick") == 0)
 	{
 		// find the other
-		for (int i = 0; i < VRMENU_ITEMS; i++)
+		for (int i = 0; i < ItemCount(); i++)
 		{
-			if (s_Settings[i].nType == VRS_ACTION) continue;
-			if (strcmp(s_Settings[i].szKey, "PhysicalWepSwap") == 0 && strcmp(s.szKey, "WepSwapThumbstick") == 0)
+			if (ROW(i).nType == VRS_ACTION) continue;
+			if (strcmp(ROW(i).szKey, "VRPhysicalWepSwap") == 0 && strcmp(s.szKey, "VRWepSwapThumbstick") == 0)
 			{
 				// ensure at least one is on
 				if (m_fValue[i] == 0.0f && m_fValue[nItem] == 0.0f)
@@ -241,7 +317,7 @@ void CVRMenu::Change (int nItem, int nDir)
 					MakeValueSurface(i);
 				}
 			}
-			else if (strcmp(s_Settings[i].szKey, "WepSwapThumbstick") == 0 && strcmp(s.szKey, "PhysicalWepSwap") == 0)
+			else if (strcmp(ROW(i).szKey, "VRWepSwapThumbstick") == 0 && strcmp(s.szKey, "VRPhysicalWepSwap") == 0)
 			{
 				if (m_fValue[i] == 0.0f && m_fValue[nItem] == 0.0f)
 				{
@@ -260,43 +336,72 @@ void CVRMenu::Change (int nItem, int nDir)
 
 void CVRMenu::Reset()
 {
+	// Re-entering the menu always starts on the everyday page.  SetPage both
+	// re-reads the ini and rebuilds the surfaces, so that path needs no more.
+	if (m_nPage != VRMENU_PAGE_MAIN)
+	{
+		SetPage (VRMENU_PAGE_MAIN);
+		CBaseMenu::Reset();
+		return;
+	}
+
 	ReadValues();
 	int i;
-	for (i = 0; i < VRMENU_ITEMS; i++) MakeValueSurface (i);
+	for (i = 0; i < ItemCount(); i++) MakeValueSurface (i);
 	CBaseMenu::Reset();
 }
 
 void CVRMenu::Left()
 {
-	if (m_nSelection >= 0 && m_nSelection < VRMENU_ITEMS) Change (m_nSelection, -1);
+	if (m_nSelection >= 0 && m_nSelection < ItemCount()) Change (m_nSelection, -1);
 }
 
 void CVRMenu::Right()
 {
-	if (m_nSelection >= 0 && m_nSelection < VRMENU_ITEMS) Change (m_nSelection, +1);
+	if (m_nSelection >= 0 && m_nSelection < ItemCount()) Change (m_nSelection, +1);
 }
 
 void CVRMenu::Return()
 {
 	if (!m_pRiotMenu) return;
 
-	if (m_nSelection == VRM_BACK)
+	if (m_nSelection < 0 || m_nSelection >= ItemCount()) return;
+
+	const VRMenuSetting& sel = ROW(m_nSelection);
+	DBOOL bAction = (DBOOL)(sel.nType == VRS_ACTION);
+
+	if (bAction && strcmp (sel.szLabel, VRM_ACT_ADVANCED) == 0)
 	{
-		m_pRiotMenu->SetCurrentMenu (m_pParent);
-		CBaseMenu::Return();
+		SetPage (VRMENU_PAGE_ADV);
+		PlayReturnSound();
 	}
-	else if (m_nSelection == VRM_RECENTER)
+	else if (bAction && strcmp (sel.szLabel, VRM_ACT_BACK) == 0)
+	{
+		// Back off the advanced page returns to the everyday one; only Back on
+		// that page leaves the VR menu altogether.
+		if (m_nPage != VRMENU_PAGE_MAIN)
+		{
+			SetPage (VRMENU_PAGE_MAIN);
+			PlayReturnSound();
+		}
+		else
+		{
+			m_pRiotMenu->SetCurrentMenu (m_pParent);
+			CBaseMenu::Return();
+		}
+	}
+	else if (bAction && strcmp (sel.szLabel, VRM_ACT_RECENTER) == 0)
 	{
 		g_VRStereo.RequestRecenter();
 		PlayReturnSound();
 	}
-	else if (m_nSelection == VRM_DEFAULTS)
+	else if (bAction && strcmp (sel.szLabel, VRM_ACT_DEFAULTS) == 0)
 	{
 		int i;
-		for (i = 0; i < VRMENU_ITEMS; i++)
+		for (i = 0; i < ItemCount(); i++)
 		{
-			if (s_Settings[i].nType == VRS_ACTION) continue;
-			m_fValue[i] = s_Settings[i].fDefault;
+			if (ROW(i).nType == VRS_ACTION) continue;
+			m_fValue[i] = ROW(i).fDefault;
 			WriteValue (i);
 			MakeValueSurface (i);
 		}
@@ -305,10 +410,10 @@ void CVRMenu::Return()
 			float fPhys = 1.0f;
 			float fThumb = 1.0f;
 			int iPhys = -1, iThumb = -1;
-			for (i = 0; i < VRMENU_ITEMS; i++)
+			for (i = 0; i < ItemCount(); i++)
 			{
-				if (strcmp(s_Settings[i].szKey, "PhysicalWepSwap") == 0) { fPhys = m_fValue[i]; iPhys = i; }
-				if (strcmp(s_Settings[i].szKey, "WepSwapThumbstick") == 0) { fThumb = m_fValue[i]; iThumb = i; }
+				if (strcmp(ROW(i).szKey, "VRPhysicalWepSwap") == 0) { fPhys = m_fValue[i]; iPhys = i; }
+				if (strcmp(ROW(i).szKey, "VRWepSwapThumbstick") == 0) { fThumb = m_fValue[i]; iThumb = i; }
 			}
 			if (iPhys >= 0 && iThumb >= 0 && fPhys == 0.0f && fThumb == 0.0f)
 			{
@@ -319,10 +424,23 @@ void CVRMenu::Return()
 		}
 		PlayReturnSound();
 	}
-	else if (m_nSelection >= 0 && m_nSelection < VRMENU_ITEMS)
+	else if (!bAction)
 	{
 		Change (m_nSelection, +1);		// Enter / A steps forward too
 	}
+}
+
+// Esc / B on the advanced page steps back a page rather than closing the whole
+// VR menu, which is what every other nested page in this game does.
+void CVRMenu::Esc()
+{
+	if (m_nPage != VRMENU_PAGE_MAIN)
+	{
+		SetPage (VRMENU_PAGE_MAIN);
+		PlayEscSound();
+		return;
+	}
+	CBaseMenu::Esc();
 }
 
 void CVRMenu::Draw (HSURFACE hScreen, int nScreenWidth, int nScreenHeight, int nTextOffset)
@@ -334,7 +452,7 @@ void CVRMenu::Draw (HSURFACE hScreen, int nScreenWidth, int nScreenHeight, int n
 	// Values in a second column, lined up with the (possibly scrolled) labels.
 	int y = m_nMenuY + m_szMenuTitle.cy + m_nMenuTitleSpacing;
 	int i;
-	for (i = m_nTopItem; i < VRMENU_ITEMS; i++)
+	for (i = m_nTopItem; i < ItemCount(); i++)
 	{
 		if (m_Values[i].hMenuItem)
 		{
@@ -356,17 +474,17 @@ DBOOL CVRMenu::LoadSurfaces()
 	CBitmapFont* pHighlightFont = m_pRiotMenu->GetFont12s();
 
 	int i;
-	for (i = 0; i < VRMENU_ITEMS; i++)
+	for (i = 0; i < ItemCount(); i++)
 	{
-		m_GenericItem[i].hMenuItem = CTextHelper::CreateSurfaceFromString (m_pClientDE, pLabelFont, (char*)s_Settings[i].szLabel);
-		m_GenericItem[i].hMenuItemSelected = CTextHelper::CreateSurfaceFromString (m_pClientDE, pHighlightFont, (char*)s_Settings[i].szLabel);
+		m_GenericItem[i].hMenuItem = CTextHelper::CreateSurfaceFromString (m_pClientDE, pLabelFont, (char*)ROW(i).szLabel);
+		m_GenericItem[i].hMenuItemSelected = CTextHelper::CreateSurfaceFromString (m_pClientDE, pHighlightFont, (char*)ROW(i).szLabel);
 	}
 
-	m_hMenuTitle = CTextHelper::CreateSurfaceFromString (m_pClientDE, pLabelFont, (char*)"VR SETTINGS");
+	m_hMenuTitle = CTextHelper::CreateSurfaceFromString (m_pClientDE, pLabelFont, (char*)s_PageTitle[m_nPage]);
 	m_pClientDE->GetSurfaceDims (m_hMenuTitle, &m_szMenuTitle.cx, &m_szMenuTitle.cy);
 
 	ReadValues();
-	for (i = 0; i < VRMENU_ITEMS; i++)
+	for (i = 0; i < ItemCount(); i++)
 	{
 		if (!m_GenericItem[i].hMenuItem || !m_GenericItem[i].hMenuItemSelected || !MakeValueSurface (i))
 		{

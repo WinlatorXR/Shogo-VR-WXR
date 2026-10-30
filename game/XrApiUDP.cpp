@@ -47,6 +47,22 @@ static void XrQuatToOpenXR(const DFLOAT qIn[4], DFLOAT qOut[4])
 	qOut[0] = qIn[0]; qOut[1] = qIn[1]; qOut[2] = qIn[2]; qOut[3] = qIn[3];
 }
 
+// QRotate below is the v + 2w(u x v) + 2u x (u x v) form, which is a pure
+// rotation ONLY for a unit quaternion - fed a longer one it rotates AND scales
+// by |q|^2.  Nothing guaranteed that: a hand-authored test packet is normalised
+// only by luck, and a real runtime's quaternions drift with float error over a
+// session.  The cost of being wrong is quiet and nasty, because the scaling
+// lands on the hand basis vectors and so on every offset measured against them
+// - and by a DIFFERENT amount per hand, which reads as the two hands disagreeing
+// about a distance that should not depend on handedness at all.
+static void QNormalise(DFLOAT q[4])
+{
+	DFLOAT n2 = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
+	if (n2 < 1e-12f) { q[0] = q[1] = q[2] = 0.0f; q[3] = 1.0f; return; }
+	DFLOAT inv = 1.0f / (DFLOAT)sqrt(n2);
+	q[0] *= inv; q[1] *= inv; q[2] *= inv; q[3] *= inv;
+}
+
 static void QMul(const DFLOAT a[4], const DFLOAT b[4], DFLOAT r[4])
 {
 	r[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
@@ -131,6 +147,7 @@ CXrApiUDP::CXrApiUDP()
 	memset(m_sendAddr, 0, sizeof(m_sendAddr));
 
 	m_bHaveRaw			= DFALSE;
+	m_szRaw[0] = 0;
 	memset(m_lQuat, 0, sizeof(m_lQuat));
 	memset(m_rQuat, 0, sizeof(m_rQuat));
 	memset(m_hmdQuat, 0, sizeof(m_hmdQuat));
@@ -364,6 +381,9 @@ DBOOL CXrApiUDP::Parse(const char* szData)
 {
 	if (!szData || !*szData) return DFALSE;
 
+	strncpy(m_szRaw, szData, sizeof(m_szRaw) - 1);
+	m_szRaw[sizeof(m_szRaw) - 1] = 0;
+
 	// Split into whitespace-separated tokens.
 	char tok[64][32];
 	int nTok = 0;
@@ -397,6 +417,11 @@ DBOOL CXrApiUDP::Parse(const char* szData)
 
 	m_hmdQuat[0] = f[18]; m_hmdQuat[1] = f[19]; m_hmdQuat[2] = f[20]; m_hmdQuat[3] = f[21];
 	m_hmdPos[0] = f[22];  m_hmdPos[1] = f[23];  m_hmdPos[2] = f[24];
+
+	// Take the orientations as directions, not as lengths.
+	QNormalise(m_lQuat);
+	QNormalise(m_rQuat);
+	QNormalise(m_hmdQuat);
 
 	m_ipd	= f[25];
 	m_fovX	= f[26];

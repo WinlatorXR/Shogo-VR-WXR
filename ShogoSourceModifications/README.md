@@ -41,7 +41,7 @@ ShogoSourceModifications/
 
 | File | Purpose |
 |------|---------|
-| `ClientShellDLL/BaseMenu.h`      | Raises the generic menu-items capacity to 28 so `CVRMenu`'s 28 rows fit `m_GenericItem` (an overflow here corrupted surfaces and crashed on level start). |
+| `ClientShellDLL/BaseMenu.h`      | Raises the generic menu-items capacity to 28 so `CVRMenu`'s rows fit `m_GenericItem` (`VRMENU_ITEMS` is 27 today: 13 rows on the everyday page, 24 on the `VR ADVANCED` page behind it, so the 28 is now very nearly full) (an overflow here corrupted surfaces and crashed on level start). |
 | `ClientShellDLL/OptionsMenu.h`   | Adds the `CVRMenu` sub-menu member and its lifecycle calls. |
 | `ClientShellDLL/OptionsMenu.cpp` | Adds the "vr" item to the Options menu and routes to the VR sub-menu, and hides the Keyboard / Mouse / Joystick binding pages (the controllers own input). |
 | `ClientShellDLL/MainMenu.cpp`    | Quits immediately from the Exit / Quit item (skips the "are you sure?" box, which needs a Y key the controllers cannot send). |
@@ -50,7 +50,7 @@ ShogoSourceModifications/
 | `ClientShellDLL/RiotClientShell.cpp` | Mounts `CVRStereo`/`g_VRStereo`: init/term/update, console `VRRecenter`, head tracking, aim depth, mech mode, player body + crouch state, the stereo-aware `RenderCamera`, the per-eye menu/pause render, the right-half splash, the per-eye intro-movie clone, the dead-state feed, the VR menu-size re-layout poll, the per-eye hurt/explosion flash (which replaces the engine camera light-add), the leaked face-button key drop (`OnKeyDown`/`OnKeyUp`), the direct Right-A view toggle (`Update`), the automatic multiplayer respawn request (`Update`/`HandlePlayerStateChange`) and the guard that ignores the leaked key-driven `ChaseView` (`OnCommandOn`). |
 | `ClientShellDLL/RiotMenu.cpp`    | Asks `g_VRStereo` for the virtual menu layout size in `ScreenDimsChanged()` so the options/pause tree lays out legibly in the headset. |
 | `ClientShellDLL/RiotClientShell.h`   | Declares the `m_bMovieShiftRight` member used by the intro-movie clone and the `m_bVRRespawnSent` flag used by the automatic multiplayer respawn. |
-| `ClientShellDLL/WeaponModel.cpp` | Lets `g_VRStereo` place and scale the first-person weapon in the tracked hand, and draw its muzzle-flash sprite at the visible gun's muzzle (keeping the shot origin as it was). |
+| `ClientShellDLL/WeaponModel.cpp` | Lets `g_VRStereo` place and scale the first-person weapon in the tracked hand, draw its muzzle-flash sprite at the visible gun's muzzle (keeping the shot origin as it was), buzz the gun hand once per shot, and - for the dual pistols only - drive the firing cadence and send each shot from the pistol that fired. |
 | `ClientShellDLL/Sparam.cpp`      | `const char*` build fixes for the modern compiler (not VR-specific). |
 
 The VR modules these edits call into (`VRStereo.*`, `VRMenu.*`, `XrApiUDP.*`,

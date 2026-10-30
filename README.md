@@ -4,6 +4,8 @@ Full credit to **BrandonW24** for the original PCVR mod of SHOGO MAD - https://g
 
 Edited with the help of Big Pickle (OpenCode Zen) AI to bypass the 64-bit bridge application and the use of dgVoodoo2
 
+Also edited with Claude Code Opus 5 Medium for some post-1.0 features
+
 Thanks to Luboš, GmoLargey, and others for their work on [WinlatorXR](https://github.com/WinlatorXR/WinlatorXR) and everyone else who had contributed to portable PC gaming via Winlator on other platforms
 
 > ** NOTE: This is a 'breaking changes' fork of the parent project, and future updates to it will be required in order to stay up to date with its PCVR equivalent **
@@ -12,22 +14,27 @@ Includes a `ShogoSourceModifications` folder with prose instructions describing 
 
 Code added or modified from the parent project in this fork/port over to WinlatorXR's XrApi is subject to the repository's [MIT license](https://opensource.org/license/mit), so that others may adapt it for their own C++ PC VR games and mods as well!
 
-This version has much less customization available to make it a clean open-and-play experience for standalone players, if you have the ability to play the original PCVR mod instead, absolutely do for the best experience!
+
+Dual-wielding pistols and two-handed weapons toggle modes added (with the original game art!) thanks to Claude Code, also bug fixes and features like motion gesture melee / motion gesture weapon swapping
+
+This version has much less customization available to make it a clean open-and-play experience for standalone players, if you have the ability to play the original PCVR mod instead, absolutely do that for the best modern VR experience!
 
 **Updates:** the standalone launcher (`ShogoVR.exe`) checks this repository's [`AutoUpdate`](AutoUpdate) folder when it starts. If a newer stable build has been published it asks *"A new update is available, download now?"* and, on **Yes**, downloads the new `CShell.dll` and installs it before the game starts. With no internet, "No" button click, or if a download fails, it simply launches the game with what is already installed; what happened goes to `ShogoVR_update.log` next to `ShogoVR.exe`.
 
 **Custom mods:** the launcher looks in the game's `Custom` folder and no longer loads it automatically. If it holds `.rez` files you get a checkbox list before launch; if it also holds other files (the stock `custom.txt` is ignored) you can instead choose to load the whole folder or skip it. Mods that should always load go in an `AlwaysLoad` folder in the game directory, which is mounted whenever it exists. To skip the popup entirely, pass an exact, comma-separated list of filenames from `Custom` using `-mods` in the shortcut's arguments, for example `-mods "coop.rez,someothermod.rez"`; `ShogoVR` is added automatically and always loads last.
 
-**Multiplayer:** after you die, the game now respawns you automatically once the stock wait is over. The VR trigger is a held command rather than a mouse/key edge, so without this the game waited forever for a "press fire" event that VR never sent.
+**Multiplayer:** after you die, the game now respawns you automatically. The VR trigger is a held command rather than a mouse/key edge, so without this the game waited forever for a "press fire" event that VR never sent.
 
-**SHOGO-VR-WXR CONTROLS**
+Recommended container size: 2800x1400, or 4200x2100 (1.5x size) for bigger resolution at the cost of a little bit of performance
+
+**SHOGO-VR-WXR CONTROLS** (Right Handed Mode Default)
 
 * Left controller stick: Move
 * Left controller stick click: Crouch (**hold**)
 * Left controller X button: Crouch (**toggle**)
 * Left controller Y button: Zoom toggle (if weapon has zoom) **Entirely disabled at the moment**
 * Left controller grip: Jump
-* Left controller trigger: **F9 (quick load) while dead**; nothing while alive
+* Left controller trigger: **F9 (quick load) while dead**; Two-hand toggle while alive
 * Left controller menu button: Menu / Esc (skip intro cutscenes)
 * Right controller trigger: Fire
 * Right controller grip: Double jump (a single jump when on foot)
@@ -35,6 +42,16 @@ This version has much less customization available to make it a clean open-and-p
 * Right controller B button: Toggle vehicle / mech mode
 * Right controller stick: Turn (left/right) and change weapon (up/down)
 * Right controller stick click: Re-centre the view
+
+(Note: Left and Right triggers swap if using left handed mode)
+
+Physical gestures:
+Knife/swords dominant hand swipe to attack (DEFAULT: ON)
+Reach above left or right shoulder to switch weapon back/next (DEFAULT: OFF)
+
+VR extra features:
+Dual pistol aiming (DEFAULT: ON)
+Two handed mode toggle (DEFAULT: ON)
 
 # Original SHOGO VR ReadMe Below
 
@@ -79,6 +96,8 @@ https://youtu.be/d2rjNoYvyQU
   <p align="center"><img src="launcher/assets/settings_menu.png" alt="Shogo VR" width="640"></p>
 
   - **Note :** Your VR settings are also available in-game under *Options → vr settings*. Changes apply while you play.
+
+  - **VR Advanced :** *Options → vr settings → Advanced settings* holds the per-weapon hand options - dual pistols, the submachine gun's free off hand, the lent hands and the two-handed grip. These used to be editable only in `ShogoVR\ShogoVR.ini`.
 
   - Your button rebinding can be done from the launcher in its own tab as seen below : 
 
@@ -231,7 +250,7 @@ It'll really help me solve any issues you may encounter!
 | `launcher-xr/` | The WinlatorXR standalone launcher (`ShogoVR.exe`): finds `Client.exe`, starts it with the right `-rez` list, and installs mod updates it finds online. |
 | `AutoUpdate/` | The published stable-release files the launcher's updater reads: `CShell.dll`, `version.txt` and `notes.txt`. |
 | `game/` | The mod's own game-side source files (stereo rendering, VR menu, direct capture). |
-| `tools/leakcheck.py` | Checks that nothing from Monolith's source has slipped into this repository. |
+| `tools/leakcheck.py` | Checks that nothing from Monolith's source has slipped into this repository, which is what makes this repository publishable. Run it against a **pristine** v2.2 source release (`python tools/leakcheck.py shogosrc`) - not against `ShogoSource`, which has the mod integrated and so matches the mod's own lines. |
 | `tools/makepayload.py` | Packs the files the installer carries into `payload.bin`, which the installer builder embeds (see `launcher/BUILD.txt`). |
 
 **Not included:** Monolith's Shogo source code. The VR game code (`CShell.dll`) is built from Monolith's Shogo v2.2 source release. Its licence lets mods be shared free of charge but forbids redistributing the source, so `CShell.dll` ships only in compiled form, inside the installer. For the same reason, only prose instructions describing the edits that connect `game/` into Monolith's own files are published, in `ShogoSourceModifications/`; they reproduce none of Monolith's source.

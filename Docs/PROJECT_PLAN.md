@@ -160,6 +160,22 @@ normal launch with whatever DLL is currently installed.
   (VRGunModel).
 - Per-weapon muzzle-flash placement tuned for the held models, including one flash per
   barrel on the dual pistols.
+- Free off arm on the submachine gun (#7): weapon 18's first-person model carries a
+  second arm that holds nothing, and it now follows the off controller instead of the
+  animation.  The whole arm moves (the art names it, `R_Arm`/`R_Arm3`), the gun is never
+  touched, and the arm is handed back whenever the gun's own animation needs it - the
+  reload seats the magazine with that hand.  Entirely mod-side: **no `ShogoSource/` edit**,
+  so there is no modification note to match.
+- Dual pistols held one per hand (#5): the Colt 45 first-person model is split into its
+  two mirrored halves by part name, one left on the game's own model in the gun hand and
+  one shown on a mod-owned copy in the off hand.  Because Shogo animates the pistols well
+  away from the model's origin, each copy is anchored by reading its own `palm` node's
+  animated transform (`GetModelNodeTransform`) and shifting the object by the opposite
+  amount.  The game's fire animation stays the single cadence - the pair fires at the stock
+  rate between them and alternates hands when both triggers are held - so the only engine
+  change is one edit in `ShogoSource/ClientShellDLL/WeaponModel.cpp` (`UpdateWeaponModel`:
+  rewrite the shot origin/direction before `SendFireMsg`), noted in
+  `ShogoSourceModifications/ClientShellDLL/WeaponModel.cpp.md` as edit 5.
 - Quicksave/quickload support: a level-start autosave, and the left trigger quick-loads
   while you're dead.
 - Multiplayer deaths respawn automatically in VR after the stock wait; the trigger is read
@@ -168,3 +184,90 @@ normal launch with whatever DLL is currently installed.
   the game's `Custom` folder (the folder is no longer mounted blindly), an `AlwaysLoad`
   folder that is mounted whenever it exists, and a `-mods "coop.rez,other.rez"` shortcut
   argument that skips the popup for unattended launches. `ShogoVR` always loads last.
+
+## Weapon models and coordinates: what we learned the hard way
+
+Notes for anyone posing hands, guns or effects on Shogo's first-person weapon
+models. Every point below cost at least one wrong fix before it was understood.
+A full part dump for each on-foot weapon is in `Docs/GameLogs/2026-10-28/ShogoVR_models.txt`.
+
+### Hand groups are named by two different conventions, ordered oppositely
+
+Every two-handed on-foot weapon carries two hand groups of 16-17 nodes each,
+but under two different naming schemes - and the schemes disagree about which
+hand comes first:
+
+| naming | weapons | group A | group B |
+|---|---|---|---|
+| `palm` / `palm3` | 13 Colt 45, 15 assault rifle, 16 + 17 grenade launchers, 19 TOW | **fore** hand | trigger hand |
+| `Right_Palm` / `Right_Palm4` | 14 shotgun, 18 MAC-10, 21 squeaky toy | trigger hand | **fore** hand |
+
+Everything is named `R_`/`Right_` whatever hand it actually is, so the names
+cannot tell you which is which. One global "swap the hands" setting cannot
+satisfy both conventions: the value that held the submachine gun correctly left
+the assault rifle gripped by its fore-end with nothing on the trigger.
+
+**Measure it instead.** Read both palms off the posed model and project them
+onto the gun's own forward axis; the one further along the barrel is the fore
+hand. That rule needs no table and holds for models the mod has never seen
+(`CVRStereo::ForwardHandGroup`).
+
+### The arms are not in the hand groups, and their names are not stable
+
+The hand node lists stop at the wrist. The `Right_Palm` family carries its
+forearm as `R_Arm`/`R_Arm3`, but the `palm` family uses generic names -
+`tetra1` + `cube1_3` for the first hand, `tetra3` + `cube1_4` for the second -
+and **the TOW pairs `tetra4`/`tetra5` the opposite way round** from the assault
+rifle and both grenade launchers. They cannot be assigned per hand by name.
+
+### Weapons 15, 16 and 17 are the same rig three times
+
+The assault rifle and both grenade launchers carry identical gun part names.
+Anything written for one covers the other two unchanged.
+
+### Some weapons have only one hand in the model
+
+The shotgun (14) has a single group, and it is the **fore** hand on the pump -
+its dominant hand was never modelled. The knife (22) and squeaky toy (21) are
+single-handed too. Code that walks hand groups must cope with a group that
+returns zero nodes rather than assuming a pair.
+
+### Offsets must be measured in the frame they will be used in
+
+This is the big one. An offset applied along the **hand's** axes turns with the
+player's wrist, so a value found with the desktop UDP tester's synthetic poses
+lands somewhere else entirely once a real wrist holds the weapon at a real
+angle - on device the lent hand was thrown clear of the gun. Anything attached
+to a weapon belongs in the **gun's** frame (`CVRStereo::PoseLentHandOnGun`):
+same origin, orientation and scale as the weapon, offset along the weapon's own
+axes. A hand on a grip does not move when the wrist turns; the whole weapon
+turns with it.
+
+Corollary: a trim tuned per handedness mode needs per-mode storage. One shared
+set of CVars means tuning the second mode silently overwrites the first.
+
+### The model's origin is not the grip
+
+`GetModelNodeTransform` is read-only and there is no node-transform write, so a
+mod-owned copy of a model cannot be posed by its nodes. Anchor it instead by
+reading the node you care about, taking its offset from the object origin, and
+shifting the whole object by the opposite amount (`CVRStereo::GetNodeDrift`).
+Shogo animates weapons well away from the origin, so without this the copy
+drifts visibly as the animation plays.
+
+### Check your quaternions are unit length
+
+`QRotate` in `XrApiUDP.cpp` - and the usual `v + 2w(u x v) + 2u x (u x v)` form
+generally - is a pure rotation **only** for a unit quaternion. Fed a longer one
+it rotates *and* scales by `|q|²`. Hand-authored test packets are normalised
+only by luck (ours were 4.7% and 1.4% long, which stretched the two hand bases
+by different amounts), and a real runtime's quaternions drift with float error
+over a session. The failure is silent and shows up as small asymmetries in
+things that should be symmetric. Normalise on parse.
+
+### A screenshot cannot identify a weapon
+
+The shotgun and the assault rifle read as the same gun at the wrong angle, and
+two fixes were aimed at the wrong weapon because of it. The mod logs one line
+per weapon change naming the model file and every decision made about that
+weapon's hands; trust that over the picture.

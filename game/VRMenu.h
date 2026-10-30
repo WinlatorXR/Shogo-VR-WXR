@@ -7,6 +7,9 @@
 //           left/right to change).  Shares ShogoVR\ShogoVR.ini with the
 //           desktop "Shogo VR Settings" window and the headset bridge.
 //
+//           Two pages: the everyday list, and "VR ADVANCED" behind it for the
+//           per-weapon hand settings that were previously ini-only.
+//
 // ======================================================================= //
 
 #ifndef __VRMENU_H
@@ -14,7 +17,15 @@
 
 #include "BaseMenu.h"
 
-#define VRMENU_ITEMS	12
+// The menu has two pages, drawn by the one object: the everyday list and a
+// short "VR ADVANCED" page holding the two master switches for the per-weapon
+// hand features.  Both pages share the item, value and surface arrays, so
+// these must be sized for the LONGER of the two - the everyday page today.
+#define VRMENU_PAGE_MAIN	0
+#define VRMENU_PAGE_ADV		1
+#define VRMENU_PAGES		2
+
+#define VRMENU_ITEMS	13
 
 #if VRMENU_ITEMS > MAX_GENERIC_ITEMS
 #error VRMenu has more items than CBaseMenu::m_GenericItem can hold
@@ -36,6 +47,7 @@ public:
 	virtual void		Left();
 	virtual void		Right();
 	virtual void		Return();
+	virtual void		Esc();
 
 	virtual void		Draw (HSURFACE hScreen, int nScreenWidth, int nScreenHeight, int nTextOffset = 0);
 
@@ -44,6 +56,16 @@ protected:
 	virtual DBOOL		LoadSurfaces();
 	virtual void		UnloadSurfaces();
 	virtual void		PostCalculateMenuDims();
+
+	// How many rows the page being shown actually has - every loop that used to
+	// run to VRMENU_ITEMS runs to this instead, so the shorter page leaves the
+	// rows above it empty and CBaseMenu's own "is there a surface here" item
+	// count skips them.
+	int					ItemCount() const;
+
+	// Switches page in place: frees this page's surfaces, builds the other
+	// page's, and lets CBaseMenu re-measure and re-centre the result.
+	void				SetPage (int nPage);
 
 	void				ReadValues();
 	void				Change (int nItem, int nDir);
@@ -54,6 +76,7 @@ protected:
 
 protected:
 
+	int					m_nPage;
 	int					m_nSecondColumn;
 	GENERIC_ITEM		m_Values[VRMENU_ITEMS];
 	float				m_fValue[VRMENU_ITEMS];

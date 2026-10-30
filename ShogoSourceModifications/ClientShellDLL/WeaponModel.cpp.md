@@ -16,6 +16,7 @@ your copy may differ by a few lines.
 | 3. Muzzle flash follows the gun (#29, #41) | `WeaponModel.h` line 112, ctor line 54, `UpdateWeaponModel` line 361, `UpdateFlash` line 529 |
 
 | 4. Shot haptics (#40)            | `CWeaponModel::Fire()` line 715, after `GetAmmoCount` at line 724 |
+| 5. Dual pistols, per-hand shot pose (#5) | `UpdateWeaponModel`, immediately before the `SendFireMsg()` call at line 349 |
 
 ---
 
@@ -115,8 +116,11 @@ Notes:
 - The mod **corrects only the offset's forward/back and up/down components** for the held gun
   (`z += VRFlashOffset` out past the muzzle, `y = -VRFlashLower` below the barrel); the table's own
   value drives the rest. This is what fixed the original "behind and above the gun" complaint.
-  Defaults: `VRFlashOffset` **2.0** (out) and `VRFlashLower` **2.4** (down) - trimmed from 3.0 once
-  a device pass confirmed the sprite was in front of the barrel but a touch too far out and too low.
+  Defaults: `VRFlashOffset` **0.5** (out) and `VRFlashLower` **1.16** (down) - trimmed twice, first
+  from 3.0 to 2.0/2.4 once a device pass confirmed the sprite was in front of the barrel but a touch
+  too far out and too low, then again to the current values during the #46 tuning.  Note the pistols
+  only take a **fraction** of each (x0.3 of the offset forward, x0.5 of the lower, down) - see the
+  `GUN_COLT45_ID` branch in `GetMuzzleFlashWorld`.
   **These corrections apply in BOTH branches of `GetMuzzleFlashWorld()`** — the mod's third-person
   held gun (`VRGunModel=1`) *and* the first-person model with arms (`VRGunModel=0`, the **default**).
   A device log showed `VRGunModel` is `0` on the headset, and the corrections used to sit inside
@@ -129,7 +133,12 @@ Notes:
   a little too far apart, so `-6.2`/`+5.8` become `-3.91`/`+3.65` (span `12.0 -> 7.56`) while the
   barrels stay on opposite sides; `1.0` reproduces the game's own spread. For every other
   (single-barrel) weapon the table's left/right was only barrel-selection noise, so it is replaced
-  by one constant (`VRMuzzleLateral`, default `0`, i.e. on the barrel axis). All four values
+  by one constant (`VRMuzzleLateral`, default `0`, i.e. on the barrel axis).
+  **Superseded for the split pair (#5, edits 5 and 6 below).** Once each pistol is in its own hand the
+  flash origin *is* the firing hand, so applying the table's left/right value on top would push the
+  left pistol's flash out past the left of the left hand. A split pistol is therefore treated like any
+  other single-barrel weapon and takes `VRMuzzleLateral`. `VRPistolSpread` still scales the **stock**
+  pair, where one model holds both barrels and the table's x is the only thing telling them apart. All four values
   (`VRFlashOffset`, `VRFlashLower`, `VRMuzzleLateral`, `VRPistolSpread`) are live CVars, and
   `GetMuzzleFlashWorld()` logs the applied x/y/z offset and scale per weapon (the pistols' line is
   tagged `[pistols: spread-scaled, first-person]` or `..., held]`) so they can be tuned on-device.
@@ -168,3 +177,64 @@ Notes:
 - Called before the branches, so an empty clip (the dry click) also buzzes — that
   matches "the ammo counter is what drives the vibration".
 
+
+---
+
+## 5. Dual pistols: each shot comes from the pistol that fired (#5)
+
+**Part of:** the same function, immediately before the `SendFireMsg()` call at
+pristine line 349 (inside the `FiredWeapon(eState)` block).
+
+`SendFireMsg()` takes the shot **direction** from the weapon object's own
+rotation and the **origin** from `m_vFlashPos`, and the server
+(`CPlayerObj::HandleWeaponFireMessage`) uses both as given. So pointing a shot
+down the correct pistol needs nothing more than rewriting those two values
+after the game has built them and before the message goes out - no message
+format change, and the server is not touched.
+
+```cpp
+// Dual pistols (#5): send this shot from whichever of the two pistols
+// is firing it.  SendFireMsg below reads the direction from the
+// weapon object's rotation and the origin from m_vFlashPos, and the
+// server takes both as given, so the mod only has to rewrite the two
+// here.  A no-op for every weapon but a split pair, and it does not
+// touch the rate of fire - the animation is still the only thing that
+// decides when a shot happens.
+g_VRStereo.ApplyPistolShotPose(m_nWeaponId, vPos,
+							   (DBOOL)(!pSettings->VehicleMode()),
+							   m_vFlashPos, m_hObject);
+```
+
+Notes:
+- **This is the only edit the dual pistols need.** An earlier attempt also drove
+  `m_bFire` from the mod so each pistol could keep its own cooldown; that is gone.
+  The game's fire animation is left as the single thing deciding *when* a shot
+  happens, and the mod only decides *which* pistol owns it - so the pair fires at
+  the stock rate between them, the server sees the stock stream of shots, ammo
+  drains at the stock rate, and `CWeaponModel`'s firing state machine is not
+  touched at all.
+- `vPos` is the camera position, the same value edit 3 passes to
+  `GetMuzzleFlashWorld`; `pSettings` is already in scope.
+- Which pistol a shot belongs to is settled in `CVRStereo::ShotFired()` (edit 4's
+  call), which the engine makes from `Fire()` a few lines earlier in the same
+  frame. It has to be settled there rather than here, because `Fire()` runs
+  *before* this block: deciding here would leave the haptics buzzing the hand
+  that fired the previous shot.
+- The weapon object's rotation is set only for `SendFireMsg`'s benefit. The
+  `AdjustWeaponPose` call a few lines further down re-poses the model for
+  display straight afterwards, so nothing visible depends on it.
+- This is the **one** place the mod moves `m_vFlashPos`, the shot origin, which
+  edit 3 deliberately leaves alone. Here it is the point: the off hand's shots
+  have to start at the off hand. It is gated on `VRPistolShotOrigin` (default
+  `1`) because an origin an arm's length from the camera can end up the wrong
+  side of a wall in a tight corridor; with the CVar off only the direction is
+  per-hand and the game's own origin is kept.
+- `ApplyPistolShotPose` returns `DFALSE` for anything but a split pair and
+  changes nothing in that case.
+- **Third person:** `CPlayerObj::HandleWeaponFireMessage` replaces the origin
+  with `HandHeldWeaponFirePos()` when `m_b3rdPersonView`, so the per-hand
+  origin is lost in third person (the direction still applies). Right A toggles
+  that view, so it is reachable.
+- **Multiplayer and ammo are unaffected**, which is the point of leaving the
+  cadence alone: one shot per animation cycle, one message, one ammo tick,
+  whether the player is holding one trigger or both.
