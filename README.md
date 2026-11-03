@@ -1,6 +1,4 @@
-<p align="center">
-  [![Shogo MAD VR (WXR) - V1.2 Update - Meta Quest 3 Standalone](https://github.com/user-attachments/assets/036fc77f-8aaa-4b21-9de9-033a7345acac)](https://www.youtube.com/watch?v=efuThU4xHvE)
-</p>
+[![Shogo MAD VR (WXR) - V1.2 Update - Meta Quest 3 Standalone](https://github.com/user-attachments/assets/036fc77f-8aaa-4b21-9de9-033a7345acac)](https://www.youtube.com/watch?v=efuThU4xHvE)
 
 
 Taking the SHOGO VR mod from PCVR to **standalones** via **WinlatorXR XrAPI**
